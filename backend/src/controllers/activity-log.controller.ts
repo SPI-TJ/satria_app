@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../config/database';
+import logger from '../utils/logger';
 
 const ACTION_LABELS: Record<string, string> = {
   LOGIN:               'Login',
@@ -104,6 +105,7 @@ export async function getActivityLog(req: Request, res: Response) {
       `SELECT DISTINCT action FROM auth.activity_log ORDER BY action`,
     );
 
+    logger.info('[ACTIVITY_LOG] Fetched activity logs', { page, limit, total, user_id });
     return res.json({
       success: true,
       data: dataRes.rows,
@@ -118,7 +120,7 @@ export async function getActivityLog(req: Request, res: Response) {
       },
     });
   } catch (err) {
-    console.error('[activityLog.getAll]', err);
+    logger.error(`[ACTIVITY_LOG] Get activity logs failed: ${(err as Error).message}`, { error: err });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -144,6 +146,7 @@ export async function getActivityLogSummary(_req: Request, res: Response) {
       ),
     ]);
 
+    logger.info('[ACTIVITY_LOG] Fetched activity log summary');
     return res.json({
       success: true,
       data: {
@@ -153,7 +156,7 @@ export async function getActivityLogSummary(_req: Request, res: Response) {
       },
     });
   } catch (err) {
-    console.error('[activityLog.summary]', err);
+    logger.error(`[ACTIVITY_LOG] Get activity log summary failed: ${(err as Error).message}`, { error: err });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }

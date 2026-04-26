@@ -4,12 +4,19 @@ import {
   getDirektorats, getDirektoratById, createDirektorat, updateDirektorat,
   getDivisis, getDivisiById, createDivisi, updateDivisi,
   getDepartemens, getDepartemenById, createDepartemen, updateDepartemen,
+  getDirektoratsDropdown, getDivisDropdown, getDepartemensDropdown, getSasaranKorporatDropdown,
 } from '../controllers/organisasi.controller';
 
 const router = Router();
 const adminOnly = requireRole('admin_spi', 'it_admin');
 
-// ── Direktorat ────────────────────────────────────────────────
+// ── Dropdown endpoints (simple list, no pagination) ──────────
+router.get('/dropdown/direktorat',       getDirektoratsDropdown);
+router.get('/dropdown/divisi',           getDivisDropdown);
+router.get('/dropdown/departemen',       getDepartemensDropdown);
+router.get('/dropdown/sasaran-korporat', getSasaranKorporatDropdown);
+
+// ── Direktorat (Management with pagination) ─────────────────
 router.get   ('/direktorat',     getDirektorats);
 router.get   ('/direktorat/:id', getDirektoratById);
 router.post  ('/direktorat',     authenticate, adminOnly, createDirektorat);

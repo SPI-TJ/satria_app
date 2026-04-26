@@ -10,11 +10,12 @@ export default function Login() {
   const navigate = useNavigate();
   const setAuth  = useAuthStore((s) => s.setAuth);
   
-  const [email, setEmail]       = useState('');
+  const [nik, setNik]           = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [errorCode,  setErrorCode]  = useState<'NIK_NOT_FOUND' | 'INVALID_PASSWORD' | 'ACCOUNT_INACTIVE' | 'GENERIC' | ''>('');
 
   // Link WhatsApp Admin SPI
   const waNumber = '628771140555';
@@ -23,23 +24,48 @@ export default function Login() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !password) return;
-    
+    if (!nik || !password) return;
+    if (nik.length !== 6) {
+      setLoginError('NIK harus tepat 6 digit angka.');
+      return;
+    }
+
     setLoading(true);
-    setLoginError(''); 
-    
+    setLoginError('');
+    setErrorCode('');
+
     try {
-      const res = await authApi.login(email, password);
+      const res = await authApi.login(nik, password);
       const { token, user } = res.data.data as { token: string; user: User };
       setAuth(user, token);
       toast.success(`Selamat datang, ${user.nama}!`);
       navigate('/');
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })
-        ?.response?.data?.message ?? 'Email atau password yang Anda masukkan salah. Silakan coba lagi.';
-      
+      const resp = (err as { response?: { data?: { message?: string; code?: string } } })?.response?.data;
+      const rawMsg = resp?.message ?? '';
+      // Fallback: jika backend belum update (tanpa field `code`), coba deteksi
+      // dari pesan. Kalau pesan generik "NIK atau password salah" kita anggap
+      // NIK tidak terdaftar karena kita tidak bisa bedakan — lebih informatif
+      // daripada kosong.
+      let code = (resp?.code ?? '') as typeof errorCode;
+      if (!code) {
+        if (/tidak terdaftar|belum terdaftar|not found/i.test(rawMsg)) code = 'NIK_NOT_FOUND';
+        else if (/password/i.test(rawMsg)) code = 'INVALID_PASSWORD';
+        else if (/tidak aktif|inactive/i.test(rawMsg)) code = 'ACCOUNT_INACTIVE';
+        else code = 'GENERIC';
+      }
+      const msg = rawMsg || 'Tidak dapat terhubung ke server. Silakan coba lagi.';
+
+      setErrorCode(code);
       setLoginError(msg);
-      toast.error('Login gagal');
+      // Fokuskan kursor ke field yg bermasalah tanpa menghapus nilainya
+      if (code === 'INVALID_PASSWORD') {
+        setPassword('');
+        setTimeout(() => document.querySelector<HTMLInputElement>('input[type="password"], input[autocomplete="current-password"]')?.focus(), 0);
+      } else if (code === 'NIK_NOT_FOUND') {
+        setTimeout(() => document.querySelector<HTMLInputElement>('input[autocomplete="username"]')?.focus(), 0);
+      }
+      toast.error(code === 'NIK_NOT_FOUND' ? 'NIK belum terdaftar' : 'Login gagal');
     } finally {
       setLoading(false);
     }
@@ -78,17 +104,39 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Input Email */}
+            {/* Input NIK */}
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Email</label>
+              <label className="block text-sm font-bold text-slate-700 mb-2">NIK</label>
               <input
-                type="email" 
+                type="text"
                 required
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@transjakarta.co.id"
-                className="w-full bg-white border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all placeholder:text-slate-400 shadow-sm"
+                autoComplete="username"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={nik}
+                onChange={(e) => {
+                  setNik(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  if (errorCode === 'NIK_NOT_FOUND') { setErrorCode(''); setLoginError(''); }
+                }}
+                placeholder="6 digit NIK"
+                className={`w-full bg-white border text-slate-800 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-2 transition-all placeholder:text-slate-400 shadow-sm ${
+                  (nik.length > 0 && nik.length !== 6) || errorCode === 'NIK_NOT_FOUND'
+                    ? 'border-red-400 focus:ring-red-500/20 focus:border-red-500'
+                    : 'border-slate-200 focus:ring-primary-500/20 focus:border-primary-500'
+                }`}
               />
+              {nik.length > 0 && nik.length !== 6 && (
+                <p className="mt-1.5 text-xs font-medium text-red-600">
+                  NIK harus tepat 6 digit angka. Saat ini: {nik.length} digit.
+                </p>
+              )}
+              {errorCode === 'NIK_NOT_FOUND' && nik.length === 6 && (
+                <p className="mt-1.5 text-xs font-semibold text-red-600 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  NIK {nik} belum terdaftar pada sistem.
+                </p>
+              )}
             </div>
 
             {/* Input Password */}
@@ -96,12 +144,20 @@ export default function Login() {
               <label className="block text-sm font-bold text-slate-700 mb-2">Password</label>
               <div className="relative">
                 <input
-                  type={showPw ? 'text' : 'password'} 
+                  type={showPw ? 'text' : 'password'}
                   required
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errorCode === 'INVALID_PASSWORD') { setErrorCode(''); setLoginError(''); }
+                  }}
                   placeholder="••••••••"
-                  className="w-full bg-white border border-slate-200 text-slate-800 text-sm rounded-xl pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all placeholder:text-slate-400 tracking-wide shadow-sm"
+                  className={`w-full bg-white border text-slate-800 text-sm rounded-xl pl-4 pr-12 py-3 focus:outline-none focus:ring-2 transition-all placeholder:text-slate-400 tracking-wide shadow-sm ${
+                    errorCode === 'INVALID_PASSWORD'
+                      ? 'border-red-400 focus:ring-red-500/20 focus:border-red-500'
+                      : 'border-slate-200 focus:ring-primary-500/20 focus:border-primary-500'
+                  }`}
                 />
                 <button
                   type="button"
@@ -111,11 +167,17 @@ export default function Login() {
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {errorCode === 'INVALID_PASSWORD' && (
+                <p className="mt-1.5 text-xs font-semibold text-red-600 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Password salah. Silakan coba lagi.
+                </p>
+              )}
             </div>
 
             {/* Tombol Submit */}
             <button
-              type="submit" 
+              type="submit"
               disabled={loading}
               className="w-full bg-primary-600 text-white font-bold rounded-xl py-3 mt-2 hover:bg-primary-700 hover:shadow-md disabled:opacity-70 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
             >

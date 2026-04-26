@@ -8,6 +8,7 @@ import notificationRoutes  from './notifications.routes';
 import adminRoutes         from './admin.routes';
 import module1Routes       from './module1.routes';
 import organisasiRoutes    from './organisasi.routes';
+import settingsRoutes      from './settings.routes';
 
 const router = Router();
 
@@ -25,5 +26,8 @@ router.use('/', module1Routes);
 
 // ── Organisasi (Direktorat, Divisi, Departemen) ───────────────
 router.use('/', organisasiRoutes);
+
+// ── Pengaturan Sistem (HoS, Sasaran, Bobot, Tipe Penugasan) ───
+router.use('/', settingsRoutes);
 
 export default router;

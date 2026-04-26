@@ -5,7 +5,7 @@ interface NotificationState {
   notifications:  Notification[];
   unreadCount:    number;
   isPanelOpen:    boolean;
-  activeTab:      'All' | 'Unread' | 'Risk' | 'Program' | 'System';
+  activeTab:      'All' | 'Unread' | 'Risk' | 'Program' | 'System' | 'Evaluation';
   setNotifications: (items: Notification[], unread: number) => void;
   markRead:         (id: string) => void;
   markAllRead:      () => void;

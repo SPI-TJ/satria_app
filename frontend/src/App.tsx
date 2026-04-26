@@ -32,6 +32,9 @@ import PemantauanPage from './pages/module5/PemantauanPage';
 // ── Modul 6: Dashboard CA-CM ──────────────────────────────────
 import CACMPage from './pages/module6/CACMPage';
 
+// ── Pengaturan Sistem (Master Data Modul 1) ──────────────────
+import PengaturanSistemPage from './pages/settings/PengaturanSistemPage';
+
 // ── Route Guards ──────────────────────────────────────────────
 
 /** Redirect ke /login jika belum autentikasi */
@@ -118,13 +121,15 @@ export default function App() {
                 </RoleRoute>
               }
             />
+            {/* Redirect lama → PKPT tab CEO Letter */}
+            <Route path="ceo-letter" element={<Navigate to="/perencanaan/pkpt?tab=ceo-letter" replace />} />
           </Route>
 
           {/* ── Modul 2: Pelaksanaan Audit & Kertas Kerja ────── */}
           <Route
             path="pelaksanaan"
             element={
-              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi', 'it_admin']}>
+              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi']}>
                 <PelaksanaanPage />
               </RoleRoute>
             }
@@ -134,7 +139,7 @@ export default function App() {
           <Route
             path="pelaporan"
             element={
-              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi', 'it_admin']}>
+              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi']}>
                 <PelaporanPage />
               </RoleRoute>
             }
@@ -144,7 +149,7 @@ export default function App() {
           <Route
             path="sintesis"
             element={
-              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'admin_spi', 'it_admin']}>
+              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'admin_spi']}>
                 <SintesisPage />
               </RoleRoute>
             }
@@ -154,7 +159,7 @@ export default function App() {
           <Route
             path="pemantauan"
             element={
-              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi', 'it_admin']}>
+              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi']}>
                 <PemantauanPage />
               </RoleRoute>
             }
@@ -164,8 +169,18 @@ export default function App() {
           <Route
             path="ca-cm"
             element={
-              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi', 'it_admin']}>
+              <RoleRoute allowed={['kepala_spi', 'pengendali_teknis', 'anggota_tim', 'admin_spi']}>
                 <CACMPage />
+              </RoleRoute>
+            }
+          />
+
+          {/* ── Pengaturan Sistem (Kepala SPI + Admin SPI) ───── */}
+          <Route
+            path="pengaturan"
+            element={
+              <RoleRoute allowed={['kepala_spi', 'admin_spi']}>
+                <PengaturanSistemPage />
               </RoleRoute>
             }
           />

@@ -6,7 +6,7 @@ import {
   ClipboardList, CheckCircle2, AlertCircle, Clock,
   Sparkles, Shield, Layers, LayoutTemplate,
   FileText, PieChart, CheckSquare,
-  LayoutDashboard
+  LayoutDashboard,
 } from 'lucide-react';
 import { dashboardApi } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
@@ -78,7 +78,7 @@ function getGreeting() {
 }
 
 const APP_DESCRIPTION =
-  'Sistem Akuntabilitas for TransJakarta Internal Audit (SATRIA) dikembangkan untuk mendukung kegiatan pengawasan dan audit internal oleh Satuan Pengawas Internal (SPI) PT Transportasi Jakarta. Aplikasi ini berfungsi sebagai sistem terintegrasi yang mengelola seluruh siklus audit, mulai dari perencanaan pengawasan tahunan, pelaksanaan audit digital, hingga pemantauan tindak lanjut melalui Dashboard CA-CM demi meningkatkan efektivitas dan efisiensi perusahaan.';
+  'Sistem Akuntabilitas for TransJakarta Internal Audit (SATRIA) dikembangkan untuk mendukung kegiatan pengawasan dan audit internal oleh Satuan Pengawas Internal (SPI) PT Transportasi Jakarta. Aplikasi ini berfungsi sebagai sistem terintegrasi yang mengelola seluruh siklus audit, mulai dari perencanaan pengawasan tahunan, pelaksanaan audit, pemantauan tindak lanjut, hingga Dashboard CA-CM demi meningkatkan efektivitas dan efisiensi perusahaan.';
 
 // Module definitions with their IDs for access control
 const MODULE_IDS = ['pkpt', 'pelaksanaan', 'pelaporan', 'sintesis', 'pemantauan', 'ca-cm'] as const;
@@ -179,8 +179,8 @@ export default function Dashboard() {
       </div>
 
       {/* ═══ 2. Statistik Eksekutif ═══ */}
-      {/* Only admin_spi and it_admin can see the overview stats */}
-      {(role === 'admin_spi' || role === 'it_admin') && (
+      {/* Overview audit hanya untuk SPI leaders, bukan Admin IT */}
+      {(role === 'admin_spi' || role === 'kepala_spi') && (
         <div>
           <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">
             Overview
@@ -220,18 +220,14 @@ export default function Dashboard() {
             const Icon = mod.icon;
 
             // Module access control:
-            // - admin_spi and it_admin can see all modules (both active and inactive)
-            // - Other users can only see modules they have access to via module_access
-            const isAdmin = ['admin_spi', 'it_admin'].includes(role ?? '');
-            
-            let canSee = false;
-            if (isAdmin) {
-              // Admins see all modules (active and inactive)
-              canSee = true;
-            } else {
-              // Non-admin users: check module_access
-              canSee = mod.isActive && canAccessModule(moduleAccess, mod.id);
-            }
+            // - it_admin tidak memiliki akses ke modul audit sama sekali
+            // - admin_spi & kepala_spi lihat semua modul
+            // - User lain: cek module_access
+            if (role === 'it_admin') return null;
+            const isSpiLeader = role === 'admin_spi' || role === 'kepala_spi';
+            const canSee = isSpiLeader
+              ? true
+              : mod.isActive && canAccessModule(moduleAccess, mod.id);
 
             if (!canSee) return null;
 

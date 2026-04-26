@@ -44,17 +44,19 @@ CREATE TABLE pelaporan.notifications (
     title             VARCHAR(300) NOT NULL,
     message           TEXT         NOT NULL,
     notification_type VARCHAR(20)  NOT NULL DEFAULT 'System'
-                          CHECK (notification_type IN ('Risk', 'Program', 'System')),
+                          CHECK (notification_type IN ('Risk', 'Program', 'System', 'Evaluation')),
     is_read           BOOLEAN      NOT NULL DEFAULT FALSE,
     entity_id         UUID,        -- ID entitas terkait (risk_id, plan_id, dst.)
     entity_type       VARCHAR(50), -- Tipe entitas (risk_data, annual_audit_plan, dst.)
+    link_url          VARCHAR(500),-- URL navigasi saat notifikasi diklik
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     -- Tidak ada deleted_at — notifikasi bisa di-delete hard
 );
 
 COMMENT ON TABLE  pelaporan.notifications                   IS 'Notifikasi in-app per user (badge unread)';
-COMMENT ON COLUMN pelaporan.notifications.notification_type IS 'Risk | Program | System';
+COMMENT ON COLUMN pelaporan.notifications.notification_type IS 'Risk | Program | System | Evaluation';
+COMMENT ON COLUMN pelaporan.notifications.link_url           IS 'URL navigasi ketika notifikasi diklik (opsional)';
 COMMENT ON COLUMN pelaporan.notifications.entity_id         IS 'UUID entitas terkait notifikasi (opsional)';
 
 CREATE TRIGGER trg_notif_updated_at

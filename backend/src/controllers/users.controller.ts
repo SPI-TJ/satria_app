@@ -5,6 +5,8 @@ import {
   hashDefaultPassword,
   hashPassword,
 } from '../utils/password';
+import logger from '../utils/logger';
+import { notifyWelcomeUser } from '../utils/notifications';
 
 // ── GET /api/users — daftar semua user ────────────────────────
 export async function getUsers(req: Request, res: Response) {
@@ -36,7 +38,7 @@ export async function getUsers(req: Request, res: Response) {
 
     params.push(Number(limit), offset);
     const dataRes = await query(
-      `SELECT u.id, u.nik, u.nama_lengkap, u.email, u.kontak_email, u.role, u.jabatan,
+      `SELECT u.id, u.nik, u.nama_lengkap, u.email, u.role, u.jabatan,
               u.is_active, u.module_access,
               u.direktorat_id, dr.nama AS direktorat_nama,
               u.divisi_id,    dv.nama AS divisi_nama,
@@ -62,6 +64,7 @@ export async function getUsers(req: Request, res: Response) {
       params,
     );
 
+    logger.info(`[USERS] Fetched user list`, { total, page, search, role });
     return res.json({
       success: true,
       data: dataRes.rows,
@@ -73,7 +76,7 @@ export async function getUsers(req: Request, res: Response) {
       },
     });
   } catch (err) {
-    console.error('[users.getAll]', err);
+    logger.error(`[USERS] Get users failed: ${(err as Error).message}`, { error: err });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -89,6 +92,7 @@ export async function getUserStats(_req: Request, res: Response) {
        FROM auth.users WHERE deleted_at IS NULL`,
     );
     const row = result.rows[0];
+    logger.info(`[USERS] Fetched user statistics`);
     return res.json({
       success: true,
       data: {
@@ -98,7 +102,7 @@ export async function getUserStats(_req: Request, res: Response) {
       },
     });
   } catch (err) {
-    console.error('[users.stats]', err);
+    logger.error(`[USERS] Get user stats failed: ${(err as Error).message}`, { error: err });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -108,7 +112,7 @@ export async function getUserById(req: Request, res: Response) {
   try {
     const { id } = req.params;
     const result = await query(
-      `SELECT u.id, u.nik, u.nama_lengkap, u.email, u.kontak_email, u.role, u.jabatan,
+      `SELECT u.id, u.nik, u.nama_lengkap, u.email, u.role, u.jabatan,
               u.is_active, u.module_access,
               u.direktorat_id, dr.nama AS direktorat_nama,
               u.divisi_id,    dv.nama AS divisi_nama,
@@ -124,9 +128,10 @@ export async function getUserById(req: Request, res: Response) {
     if (!result.rows[0]) {
       return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
     }
+    logger.info(`[USERS] Fetched user detail`, { user_id: id });
     return res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    console.error('[users.getById]', err);
+    logger.error(`[USERS] Get user by id failed: ${(err as Error).message}`, { error: err, user_id: req.params.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -134,7 +139,7 @@ export async function getUserById(req: Request, res: Response) {
 // ── POST /api/users — buat user baru ─────────────────────────
 export async function createUser(req: Request, res: Response) {
   try {
-    const { nik, nama_lengkap, email, kontak_email, role, jabatan, direktorat_id, divisi_id, departemen_id } = req.body;
+    const { nik, nama_lengkap, email, role, jabatan, direktorat_id, divisi_id, departemen_id } = req.body;
 
     if (!nik || !nama_lengkap || !email || !role) {
       return res.status(400).json({
@@ -143,7 +148,13 @@ export async function createUser(req: Request, res: Response) {
       });
     }
 
-    // Cek email/NIK sudah ada
+    if (!/^[0-9]{6}$/.test(nik)) {
+      return res.status(400).json({
+        success: false,
+        message: 'NIK harus tepat 6 digit angka.',
+      });
+    }
+
     const dupCheck = await query(
       `SELECT id FROM auth.users WHERE (email = $1 OR nik = $2) AND deleted_at IS NULL`,
       [email, nik],
@@ -155,24 +166,21 @@ export async function createUser(req: Request, res: Response) {
       });
     }
 
-    // Generate password default
     const defaultPassword = generateDefaultPassword(nik, nama_lengkap);
     const hash = await hashDefaultPassword(nik, nama_lengkap);
 
-    // Default module_access based on role
     let defaultModuleAccess: string[] = [];
     if (['admin_spi', 'it_admin'].includes(role)) {
       defaultModuleAccess = ['pkpt', 'pelaksanaan', 'pelaporan', 'sintesis', 'pemantauan', 'ca-cm'];
     } else if (['kepala_spi', 'pengendali_teknis', 'anggota_tim'].includes(role)) {
       defaultModuleAccess = ['pkpt'];
     }
-    // auditee gets empty array by default
 
     const result = await query<{ id: string }>(
-      `INSERT INTO auth.users (nik, nama_lengkap, email, kontak_email, role, jabatan, password_hash, is_active, module_access, direktorat_id, divisi_id, departemen_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, $10, $11)
+      `INSERT INTO auth.users (nik, nama_lengkap, email, role, jabatan, password_hash, is_active, module_access, direktorat_id, divisi_id, departemen_id)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $8, $9, $10)
        RETURNING id`,
-      [nik, nama_lengkap, email, kontak_email ?? null, role, jabatan ?? null, hash, defaultModuleAccess, direktorat_id ?? null, divisi_id ?? null, departemen_id ?? null],
+      [nik, nama_lengkap, email, role, jabatan ?? null, hash, defaultModuleAccess, direktorat_id ?? null, divisi_id ?? null, departemen_id ?? null],
     );
 
     await query(
@@ -181,6 +189,12 @@ export async function createUser(req: Request, res: Response) {
       [req.user!.id, result.rows[0].id],
     ).catch(() => null);
 
+    // Kirim notifikasi Welcome + Lengkapi Identitas (non-blocking)
+    notifyWelcomeUser(result.rows[0].id, nama_lengkap).catch((err) =>
+      logger.error(`[USERS] notifyWelcomeUser error: ${(err as Error).message}`, { new_user_id: result.rows[0].id }),
+    );
+
+    logger.info(`[USERS] User created successfully`, { new_user_id: result.rows[0].id, nik, nama_lengkap, role, created_by: req.user!.id });
     return res.status(201).json({
       success: true,
       message: `User berhasil dibuat. Password default telah di-generate.`,
@@ -191,7 +205,7 @@ export async function createUser(req: Request, res: Response) {
       },
     });
   } catch (err) {
-    console.error('[users.create]', err);
+    logger.error(`[USERS] Create user failed: ${(err as Error).message}`, { error: err, nik: req.body.nik, created_by: req.user!.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -200,9 +214,8 @@ export async function createUser(req: Request, res: Response) {
 export async function updateUser(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { nama_lengkap, email, kontak_email, jabatan, role, direktorat_id, divisi_id, departemen_id } = req.body;
+    const { nik, nama_lengkap, email, jabatan, role, direktorat_id, divisi_id, departemen_id } = req.body;
 
-    // Tidak boleh edit diri sendiri via endpoint ini (gunakan /auth/change-password)
     if (id === req.user!.id) {
       return res.status(400).json({
         success: false,
@@ -210,30 +223,89 @@ export async function updateUser(req: Request, res: Response) {
       });
     }
 
+    const oldData = await query(`SELECT * FROM auth.users WHERE id = $1 AND deleted_at IS NULL`, [id]);
+    if (!oldData.rows[0]) {
+      return res.status(404).json({ success: false, message: 'User tidak ditemukan' });
+    }
+    const old = oldData.rows[0];
+
+    // Validasi & cek duplikasi NIK jika diubah
+    let new_nik = old.nik;
+    if (nik !== undefined && nik !== old.nik) {
+      if (!/^[0-9]{6}$/.test(nik)) {
+        return res.status(400).json({ success: false, message: 'NIK harus tepat 6 digit angka.' });
+      }
+      const dup = await query(
+        `SELECT id FROM auth.users WHERE nik = $1 AND id <> $2 AND deleted_at IS NULL`,
+        [nik, id],
+      );
+      if (dup.rows[0]) {
+        return res.status(409).json({ success: false, message: 'NIK sudah digunakan user lain.' });
+      }
+      new_nik = nik;
+    }
+
+    const new_nama     = nama_lengkap !== undefined ? nama_lengkap : old.nama_lengkap;
+    const new_email    = email !== undefined ? email : old.email;
+    const new_jabatan  = jabatan !== undefined ? jabatan : old.jabatan;
+    const new_role     = role !== undefined ? role : old.role;
+    const new_dir      = direktorat_id !== undefined ? direktorat_id : old.direktorat_id;
+    const new_div      = divisi_id !== undefined ? divisi_id : old.divisi_id;
+    const new_dep      = departemen_id !== undefined ? departemen_id : old.departemen_id;
+
+    // Jika NIK atau nama_lengkap berubah, password default lama jadi tidak valid
+    // (karena derive dari NIK+lastName). Reset hash ke default baru otomatis,
+    // lalu kembalikan ke admin supaya bisa diinfokan ke user.
+    const nikChanged  = new_nik  !== old.nik;
+    const namaChanged = new_nama !== old.nama_lengkap;
+    let newDefaultPassword: string | null = null;
+    let newHash: string | null = null;
+    if (nikChanged || namaChanged) {
+      newDefaultPassword = generateDefaultPassword(String(new_nik), String(new_nama));
+      newHash            = await hashDefaultPassword(String(new_nik), String(new_nama));
+    }
+
     await query(
       `UPDATE auth.users
-       SET nama_lengkap = COALESCE($1, nama_lengkap),
-           email        = COALESCE($2, email),
-           kontak_email = COALESCE($3, kontak_email),
-           jabatan      = COALESCE($4, jabatan),
-           role         = COALESCE($5, role),
-           direktorat_id = COALESCE($6, direktorat_id),
-           divisi_id = COALESCE($7, divisi_id),
-           departemen_id = COALESCE($8, departemen_id),
-           updated_at   = NOW()
-       WHERE id = $9 AND deleted_at IS NULL`,
-      [nama_lengkap ?? null, email ?? null, kontak_email ?? null, jabatan ?? null, role ?? null, direktorat_id ?? null, divisi_id ?? null, departemen_id ?? null, id],
+       SET nik = $1,
+           nama_lengkap = $2,
+           email = $3,
+           jabatan = $4,
+           role = $5,
+           direktorat_id = $6,
+           divisi_id = $7,
+           departemen_id = $8,
+           password_hash = COALESCE($9, password_hash),
+           updated_at = NOW()
+       WHERE id = $10 AND deleted_at IS NULL`,
+      [new_nik, new_nama, new_email, new_jabatan, new_role, new_dir, new_div, new_dep, newHash, id],
     );
 
     await query(
       `INSERT INTO auth.activity_log (user_id, action, modul, entity_id)
-       VALUES ($1, 'UPDATE_USER', 'user_management', $2)`,
-      [req.user!.id, id],
+       VALUES ($1, $2, 'user_management', $3)`,
+      [req.user!.id, newHash ? 'UPDATE_USER_RESET_PW' : 'UPDATE_USER', id],
     ).catch(() => null);
 
-    return res.json({ success: true, message: 'Data user berhasil diperbarui.' });
+    logger.info(`[USERS] User updated successfully`, {
+      user_id: id, updated_by: req.user!.id, nik_changed: nikChanged, nama_changed: namaChanged,
+      password_reset: Boolean(newHash),
+    });
+    return res.json({
+      success: true,
+      message: newDefaultPassword
+        ? 'Data user berhasil diperbarui. Password di-reset ke default baru karena NIK/Nama berubah.'
+        : 'Data user berhasil diperbarui.',
+      data: newDefaultPassword
+        ? {
+            password_reset: true,
+            default_password: newDefaultPassword,
+            hint: `Pola: 3 digit terakhir NIK + '_' + nama belakang lowercase`,
+          }
+        : { password_reset: false },
+    });
   } catch (err) {
-    console.error('[users.update]', err);
+    logger.error(`[USERS] Update user failed: ${(err as Error).message}`, { error: err, user_id: req.params.id, updated_by: req.user!.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -244,7 +316,6 @@ export async function updateModuleAccess(req: Request, res: Response) {
     const { id } = req.params;
     const { module_access } = req.body;
 
-    // Validate module_access is an array
     if (!Array.isArray(module_access)) {
       return res.status(400).json({
         success: false,
@@ -252,7 +323,6 @@ export async function updateModuleAccess(req: Request, res: Response) {
       });
     }
 
-    // Validate each module_id is valid
     const validModules = ['pkpt', 'pelaksanaan', 'pelaporan', 'sintesis', 'pemantauan', 'ca-cm'];
     const invalidModules = module_access.filter((m: unknown) => !validModules.includes(m as string));
     if (invalidModules.length > 0) {
@@ -275,9 +345,10 @@ export async function updateModuleAccess(req: Request, res: Response) {
       [req.user!.id, id],
     ).catch(() => null);
 
+    logger.info(`[USERS] Module access updated successfully`, { user_id: id, modules: module_access, updated_by: req.user!.id });
     return res.json({ success: true, message: 'Akses modul berhasil diperbarui.' });
   } catch (err) {
-    console.error('[users.updateModuleAccess]', err);
+    logger.error(`[USERS] Update module access failed: ${(err as Error).message}`, { error: err, user_id: req.params.id, updated_by: req.user!.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -289,7 +360,6 @@ export async function resetUserPassword(req: Request, res: Response) {
 
     const result = await query<{ nik: string; nama_lengkap: string }>(
       `SELECT nik, nama_lengkap FROM auth.users WHERE id = $1 AND deleted_at IS NULL`,
-
       [id],
     );
     const target = result.rows[0];
@@ -311,6 +381,7 @@ export async function resetUserPassword(req: Request, res: Response) {
       [req.user!.id, id],
     ).catch(() => null);
 
+    logger.info(`[USERS] User password reset to default`, { user_id: id, target_nik: target.nik, reset_by: req.user!.id });
     return res.json({
       success: true,
       message: 'Password berhasil direset ke default.',
@@ -320,7 +391,7 @@ export async function resetUserPassword(req: Request, res: Response) {
       },
     });
   } catch (err) {
-    console.error('[users.resetPassword]', err);
+    logger.error(`[USERS] Reset user password failed: ${(err as Error).message}`, { error: err, user_id: req.params.id, reset_by: req.user!.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -350,9 +421,10 @@ export async function setUserPassword(req: Request, res: Response) {
       [req.user!.id, id],
     ).catch(() => null);
 
+    logger.info(`[USERS] User password set manually`, { user_id: id, set_by: req.user!.id });
     return res.json({ success: true, message: 'Password berhasil diubah.' });
   } catch (err) {
-    console.error('[users.setPassword]', err);
+    logger.error(`[USERS] Set user password failed: ${(err as Error).message}`, { error: err, user_id: req.params.id, set_by: req.user!.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -389,13 +461,14 @@ export async function toggleUserActive(req: Request, res: Response) {
       [req.user!.id, newStatus ? 'ACTIVATE_USER' : 'DEACTIVATE_USER', id],
     ).catch(() => null);
 
+    logger.info(`[USERS] User status toggled`, { user_id: id, new_status: newStatus, toggled_by: req.user!.id });
     return res.json({
       success: true,
       message: `User ${result.rows[0].nama_lengkap} berhasil ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}.`,
       data: { is_active: newStatus },
     });
   } catch (err) {
-    console.error('[users.toggleActive]', err);
+    logger.error(`[USERS] Toggle user active failed: ${(err as Error).message}`, { error: err, user_id: req.params.id, toggled_by: req.user!.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }
@@ -423,9 +496,10 @@ export async function deleteUser(req: Request, res: Response) {
       [req.user!.id, id],
     ).catch(() => null);
 
+    logger.info(`[USERS] User deleted (soft delete)`, { user_id: id, deleted_by: req.user!.id });
     return res.json({ success: true, message: 'User berhasil dihapus.' });
   } catch (err) {
-    console.error('[users.delete]', err);
+    logger.error(`[USERS] Delete user failed: ${(err as Error).message}`, { error: err, user_id: req.params.id, deleted_by: req.user!.id });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }

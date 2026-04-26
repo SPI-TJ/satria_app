@@ -2,48 +2,62 @@
  * Modul 1 — Perencanaan Pengawasan Tahunan (PKPT)
  * Routes: risks, annual-plans, auditors, workload, dashboard stats
  */
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+
+// Admin IT tidak boleh akses modul audit — hanya user management + activity log.
+function blockItAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role === 'it_admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Akses ditolak. Admin IT tidak memiliki akses ke modul audit.',
+    });
+  }
+  next();
+}
 
 import {
   getRisks, getRiskById, createRisk, updateRisk, deleteRisk,
-  importFromTrust, importFromFile, getTrustStatus, getDivisiList,
+  getTopRisks, getRiskLevelRef, getSasaranKorporat, getRiskStats,
+  downloadRiskTemplate,
 } from '../controllers/module1/risk.controller';
 import {
   getAnnualPlans, getAnnualPlanById, createAnnualPlan,
   updateAnnualPlan, deleteAnnualPlan, finalizeAnnualPlan,
+  markPlanCompleted, markPlanOnProgress, runDeadlineScan,
   getDashboardStats,
 } from '../controllers/module1/annual-plans.controller';
 import { getAuditors } from '../controllers/module1/auditors.controller';
-import { getWorkload }  from '../controllers/module1/workload.controller';
+import { getWorkload, simulateWorkload }  from '../controllers/module1/workload.controller';
+import {
+  getPendingEvaluations, submitEvaluation,
+  getEvaluationSummary, getAuditorEvaluationDetail,
+} from '../controllers/module1/evaluation.controller';
+import {
+  getKalenderKerja, upsertKalenderKerja,
+  lockKalenderKerja, unlockKalenderKerja,
+} from '../controllers/module1/kalender-kerja.controller';
+import {
+  getCeoLetter, upsertCeoLetter, uploadCeoLetterFile,
+  deleteCeoLetterFile, deleteCeoLetter,
+} from '../controllers/module1/ceo-letter.controller';
+import { uploadCeoLetterPdf } from '../middleware/upload.middleware';
+import { requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// ── Upload config ─────────────────────────────────────────────
-const uploadDir = process.env.UPLOAD_DIR || 'uploads';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const upload = multer({
-  dest: uploadDir,
-  limits: { fileSize: Number(process.env.MAX_FILE_SIZE_MB || 10) * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (['.xlsx', '.xls', '.csv'].includes(ext)) cb(null, true);
-    else cb(new Error('Hanya file Excel (.xlsx, .xls) dan CSV yang diperbolehkan.'));
-  },
-});
+// Semua route modul 1 butuh authenticate + bukan it_admin.
+router.use(authenticate, blockItAdmin);
 
 // ── Dashboard Stats ───────────────────────────────────────────
 router.get('/dashboard/stats', authenticate, getDashboardStats);
 
 // ── Risk Data — static routes HARUS di atas /:id ─────────────
-router.get ('/risks/trust/status',  authenticate, getTrustStatus);
-router.get ('/risks/divisi-list',   authenticate, getDivisiList);
-router.post('/risks/import/trust',  authenticate, importFromTrust);
-router.post('/risks/import/file',   authenticate, upload.single('file'), importFromFile);
+router.get('/risks/top',             authenticate, getTopRisks);
+router.get('/risks/level-ref',       authenticate, getRiskLevelRef);
+router.get('/risks/sasaran-korporat',authenticate, getSasaranKorporat);
+router.get('/risks/stats',           authenticate, getRiskStats);
+router.get('/risks/template',        authenticate, downloadRiskTemplate);
 
 // CRUD risks
 router.get   ('/risks',     authenticate, getRisks);
@@ -56,7 +70,8 @@ router.delete('/risks/:id', authenticate, deleteRisk);
 router.get('/auditors', authenticate, getAuditors);
 
 // ── Workload (Beban Kerja Auditor) ────────────────────────────
-router.get('/workload', authenticate, getWorkload);
+router.get ('/workload',          authenticate, getWorkload);
+router.post('/workload/simulate', authenticate, simulateWorkload);
 
 // ── Annual Audit Plans ────────────────────────────────────────
 router.get   ('/annual-plans',              authenticate, getAnnualPlans);
@@ -64,6 +79,30 @@ router.post  ('/annual-plans',              authenticate, createAnnualPlan);
 router.get   ('/annual-plans/:id',          authenticate, getAnnualPlanById);
 router.patch ('/annual-plans/:id',          authenticate, updateAnnualPlan);
 router.delete('/annual-plans/:id',          authenticate, deleteAnnualPlan);
-router.patch ('/annual-plans/:id/finalize', authenticate, finalizeAnnualPlan);
+router.patch ('/annual-plans/:id/finalize',      authenticate, finalizeAnnualPlan);
+router.patch ('/annual-plans/:id/mark-completed',authenticate, markPlanCompleted);
+router.patch ('/annual-plans/:id/mark-on-progress',authenticate, markPlanOnProgress);
+router.post  ('/annual-plans/scan-deadlines',    authenticate, runDeadlineScan);
+
+// ── Kalender Kerja / Man-Days ────────────────────────────────
+const kalenderAdmin = requireRole('kepala_spi', 'admin_spi');
+router.get ('/kalender-kerja',          authenticate, getKalenderKerja);
+router.put ('/kalender-kerja',          authenticate, kalenderAdmin, upsertKalenderKerja);
+router.post('/kalender-kerja/:id/lock',   authenticate, kalenderAdmin, lockKalenderKerja);
+router.post('/kalender-kerja/:id/unlock', authenticate, kalenderAdmin, unlockKalenderKerja);
+
+// ── CEO Letter (Surat Arahan Direksi) ────────────────────────
+const ceoLetterAdmin = requireRole('kepala_spi', 'admin_spi');
+router.get   ('/ceo-letter',          authenticate, getCeoLetter);
+router.put   ('/ceo-letter',          authenticate, ceoLetterAdmin, uploadCeoLetterPdf.single('file'), upsertCeoLetter);
+router.post  ('/ceo-letter/:id/file', authenticate, ceoLetterAdmin, uploadCeoLetterPdf.single('file'), uploadCeoLetterFile);
+router.delete('/ceo-letter/:id/file', authenticate, ceoLetterAdmin, deleteCeoLetterFile);
+router.delete('/ceo-letter/:id',      authenticate, ceoLetterAdmin, deleteCeoLetter);
+
+// ── Penilaian Auditor ────────────────────────────────────────
+router.get ('/evaluations/pending',             authenticate, getPendingEvaluations);
+router.get ('/evaluations/summary',             authenticate, getEvaluationSummary);
+router.get ('/evaluations/auditor/:userId',     authenticate, getAuditorEvaluationDetail);
+router.post('/evaluations',                     authenticate, submitEvaluation);
 
 export default router;

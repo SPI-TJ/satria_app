@@ -80,12 +80,14 @@ master.direktorat  (Level 1) — 5 Direktorat Transjakarta
 
 | Nama | NIK | Role | Password Default |
 |---|---|---|---|
-| IT Administrator | 000000001 | it_admin | `001_administrator` |
-| Admin SPI | 000000002 | admin_spi | `002_spi` |
-| Budi Santoso | 199001001 | kepala_spi | `001_santoso` |
-| Siti Rahayu | 199205002 | pengendali_teknis | `002_rahayu` |
-| Andi Pratama | 199508003 | anggota_tim | `003_pratama` |
-| Dewi Auditee | 199612004 | auditee | `004_auditee` |
+| Admin IT | 000001 | it_admin | `001_it` |
+| Admin SPI | 000002 | admin_spi | `002_spi` |
+| Budi Santoso | 199001 | kepala_spi | `001_santoso` |
+| Siti Rahayu | 199205 | pengendali_teknis | `205_rahayu` |
+| Andi Pratama | 199508 | anggota_tim | `508_pratama` |
+| Dewi Auditee | 199612 | auditee | `612_auditee` |
+
+> **NIK:** tepat 6 digit angka. Divalidasi di DB (`CHECK (nik ~ '^[0-9]{6}$')`) dan di form frontend.
 
 > **Pola password default:** `{3 digit terakhir NIK}_{nama belakang lowercase}`
 > Fungsi: `auth.default_password(nik, nama_lengkap)`

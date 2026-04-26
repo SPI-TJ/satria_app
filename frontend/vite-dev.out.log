@@ -1,0 +1,58 @@
+
+> satria-frontend@1.0.0 dev
+> vite --host 127.0.0.1 --port 5173
+
+Port 5173 is in use, trying another one...
+Port 5174 is in use, trying another one...
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m318[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5175[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m12:26:04 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramDetailModal.tsx, /src/index.css[22m
+[2m12:27:32 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramDetailModal.tsx, /src/index.css[22m
+[2m1:14:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/admin/ActivityLogPage.tsx, /src/pages/ProfilePage.tsx, /src/components/layout/Header.tsx, /src/pages/module1/components/WorkloadTab.tsx, /src/pages/module1/components/EvaluationTab.tsx[22m
+[2m1:15:03 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/auth/Login.tsx, /src/pages/Dashboard.tsx, /src/pages/admin/ActivityLogPage.tsx, /src/pages/ProfilePage.tsx, /src/pages/settings/PengaturanSistemPage.tsx, /src/pages/admin/UserManagementPage.tsx, /src/components/layout/Header.tsx, /src/pages/module1/components/ManDaysTab.tsx, /src/pages/module1/components/WorkloadTab.tsx, /src/pages/module1/components/EvaluationTab.tsx, /src/pages/module1/components/CeoLetterTab.tsx, /src/pages/module1/components/RiskTab.tsx, /src/pages/module1/components/ProgramTab.tsx, /src/pages/module1/components/RiskFormModal.tsx, /src/components/notifications/NotificationPanel.tsx, /src/pages/module1/components/ProgramDetailModal.tsx, /src/pages/module1/components/ProgramFormModal.tsx[22m
+[2m1:15:11 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:15:17 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:15:27 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:15:34 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:15:44 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:15:59 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:16:21 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:16:29 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:16:53 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramDetailModal.tsx, /src/index.css[22m
+[2m1:27:01 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:27:17 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:27:37 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:27:48 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:28:00 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:28:09 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:28:28 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramDetailModal.tsx, /src/index.css[22m
+[2m1:30:44 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:31:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:33:28 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:33:33 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:33:39 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:33:46 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:33:55 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:34:03 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:34:31 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramDetailModal.tsx, /src/index.css[22m
+[2m1:37:24 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:37:32 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:37:39 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:37:51 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:37:57 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:38:08 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m1:52:03 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/admin/ActivityLogPage.tsx, /src/pages/ProfilePage.tsx, /src/components/layout/Header.tsx, /src/pages/module1/components/WorkloadTab.tsx, /src/pages/module1/components/EvaluationTab.tsx[22m
+[2m1:52:10 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/auth/Login.tsx, /src/pages/Dashboard.tsx, /src/pages/admin/ActivityLogPage.tsx, /src/pages/ProfilePage.tsx, /src/pages/settings/PengaturanSistemPage.tsx, /src/pages/admin/UserManagementPage.tsx, /src/components/layout/Header.tsx, /src/pages/module1/components/ManDaysTab.tsx, /src/pages/module1/components/WorkloadTab.tsx, /src/pages/module1/components/EvaluationTab.tsx, /src/pages/module1/components/CeoLetterTab.tsx, /src/pages/module1/components/RiskTab.tsx, /src/pages/module1/components/ProgramTab.tsx, /src/pages/module1/components/RiskFormModal.tsx, /src/components/notifications/NotificationPanel.tsx, /src/pages/module1/components/ProgramDetailModal.tsx, /src/pages/module1/components/ProgramFormModal.tsx[22m
+[2m1:52:17 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:52:23 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:52:33 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:52:39 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:52:55 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:53:25 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramFormModal.tsx, /src/index.css[22m
+[2m1:53:46 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramDetailModal.tsx, /src/index.css[22m
+[2m2:00:41 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/ProgramTab.tsx, /src/index.css[22m
+[2m2:15:37 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/index.css, /src/pages/auth/Login.tsx, /src/pages/Dashboard.tsx, /src/pages/admin/ActivityLogPage.tsx, /src/pages/ProfilePage.tsx, /src/pages/settings/PengaturanSistemPage.tsx, /src/pages/admin/UserManagementPage.tsx, /src/components/layout/Header.tsx, /src/pages/module1/components/ManDaysTab.tsx, /src/pages/module1/components/WorkloadTab.tsx, /src/pages/module1/components/EvaluationTab.tsx, /src/pages/module1/components/CeoLetterTab.tsx, /src/pages/module1/components/RiskTab.tsx, /src/pages/module1/components/ProgramTab.tsx, /src/pages/module1/components/RiskFormModal.tsx, /src/components/notifications/NotificationPanel.tsx, /src/pages/module1/components/ProgramDetailModal.tsx, /src/pages/module1/components/ProgramFormModal.tsx[22m
+[2m2:25:52 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/module1/components/RiskTab.tsx, /src/index.css[22m

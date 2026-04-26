@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, NavLink, useLocation, matchPath } from 'react-router-dom';
 import {
-  Bell, LogOut, KeyRound, Users, Menu, X, Shield, Home, FileText, UserCircle,
+  Bell, LogOut, KeyRound, Users, Menu, X, Shield, Home, FileText, UserCircle, Settings,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 import { useNotificationStore } from '../../store/notification.store';
@@ -12,18 +12,20 @@ import { ROLE_LABELS } from '../../types';
 import toast from 'react-hot-toast';
 
 const ADMIN_ROLES = ['admin_spi', 'it_admin'];
+const SETTINGS_ROLES = ['kepala_spi', 'admin_spi'];
 
 const MOBILE_NAV = [
-  { to: '/',                icon: Home,     label: 'Home',                              roles: null },
-  { to: '/perencanaan/pkpt',icon: FileText, label: 'Perencanaan Pengawasan Tahunan',    roles: ['kepala_spi','pengendali_teknis','anggota_tim','admin_spi'] },
-  { to: '/admin/users',     icon: Users,    label: 'Manajemen User',                    roles: ['admin_spi','it_admin'] },
+  { to: '/',                       icon: Home,     label: 'Home',                              roles: null },
+  { to: '/perencanaan/pkpt',       icon: FileText, label: 'Perencanaan Pengawasan Tahunan',    roles: ['kepala_spi','pengendali_teknis','anggota_tim','admin_spi'] },
+  { to: '/admin/users',            icon: Users,    label: 'Manajemen User',                    roles: ['admin_spi','it_admin'] },
 ];
 
 const PAGE_TITLES: { pattern: string; title: string; subtitle?: string }[] = [
-  { pattern: '/perencanaan/pkpt',   title: 'Perencanaan Pengawasan Tahunan', subtitle: 'Modul 1 — PKPT & Non PKPT' },
+  { pattern: '/perencanaan/pkpt',        title: 'Perencanaan Pengawasan Tahunan', subtitle: 'Modul 1 — PKPT & Non PKPT' },
   { pattern: '/admin/users',        title: 'Manajemen User',                  subtitle: 'Kelola akun & hak akses pengguna' },
   { pattern: '/admin/activity-log', title: 'Log Aktivitas Sistem',           subtitle: 'Riwayat aktivitas seluruh pengguna' },
   { pattern: '/profile',            title: 'Profil Saya',                     subtitle: 'Data akun & keamanan' },
+  { pattern: '/pengaturan',         title: 'Pengaturan Sistem',               subtitle: 'Master data konfigurasi Modul Perencanaan' },
   { pattern: '/pemantauan',         title: 'Pemantauan Tindak Lanjut Temuan', subtitle: 'Monitoring tindak lanjut hasil audit' },
   { pattern: '/ca-cm',              title: 'Dashboard CA-CM',                 subtitle: 'Continuous Auditing & Continuous Monitoring' },
   { pattern: '/perencanaan/*',      title: 'Perencanaan',                     subtitle: 'Modul perencanaan pengawasan' },
@@ -73,6 +75,7 @@ export default function Header() {
   const role = user?.role ?? '';
   // Mendefinisikan status isAdmin (meliputi admin_spi & it_admin)
   const isAdmin = ADMIN_ROLES.includes(role);
+  const canSettings = SETTINGS_ROLES.includes(role);
 
   return (
     <>
@@ -181,6 +184,13 @@ export default function Header() {
                             <Shield className="w-4 h-4 text-slate-400" /> Log Aktivitas
                           </button>
                         </>
+                      )}
+
+                      {/* Pengaturan Sistem — Kepala SPI + Admin SPI */}
+                      {canSettings && (
+                        <button onClick={() => { setProfileOpen(false); navigate('/pengaturan'); }} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                          <Settings className="w-4 h-4 text-slate-400" /> Pengaturan Sistem
+                        </button>
                       )}
                     </div>
                     <div className="border-t border-slate-100 py-1">

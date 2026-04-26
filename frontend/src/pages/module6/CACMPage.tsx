@@ -8,11 +8,8 @@ export default function CACMPage() {
   return (
     <ExternalEmbed
       title="Dashboard CA-CM"
-      subtitle="Continuous Auditing & Continuous Monitoring — PowerBI"
       url={CACM_URL}
       icon={<LayoutDashboard className="w-4 h-4" />}
-      accentColor="bg-yellow-100 text-yellow-700"
-      note="Dashboard CA-CM menggunakan Microsoft PowerBI dan memerlukan akun Microsoft organisasi yang terhubung."
     />
   );
 }

@@ -18,7 +18,6 @@ export interface JwtPayload {
   nik:          string;
   nama:         string;
   email:        string;
-  kontak_email?: string;
   role:         UserRole;
   module_access: ModuleId[];
   direktorat_id?: string;
@@ -64,23 +63,42 @@ export interface PaginationQuery {
   limit?: string;
 }
 
-// ── Risk Data ────────────────────────────────────────────────
-export type RiskLevel  = 'Critical' | 'High' | 'Medium' | 'Low';
-export type RiskStatus = 'Open' | 'Mitigated' | 'Closed';
-export type RiskSource = 'TRUST' | 'Manual';
+// ── Risk Data (RCSA) ─────────────────────────────────────────
+export type RiskLevelKode = 'E' | 'T' | 'MT' | 'M' | 'RM' | 'R';
+export type RiskSource    = 'TRUST' | 'Manual' | 'Import';
 
 export interface RiskData {
-  id:               string;
-  risk_code:        string;
-  department_id?:   string;
-  department_name:  string;
-  risk_description: string;
-  risk_level:       RiskLevel;
-  status:           RiskStatus;
-  source:           RiskSource;
-  tahun:            number;
-  imported_by:      string;
-  created_at:       string;
+  id: string;
+  id_risiko: string;
+  tahun: number;
+  direktorat: string;
+  divisi: string;
+  departemen: string;
+  direktorat_id?: string;
+  divisi_id?: string;
+  departemen_id?: string;
+  sasaran_korporat?: string;
+  sasaran_korporat_id?: string;
+  sasaran_bidang?: string;
+  nama_risiko: string;
+  parameter_kemungkinan?: string;
+  tingkat_risiko_inherent?: string;
+  skor_inherent?: number;
+  level_inherent?: RiskLevelKode;
+  tingkat_risiko_target?: string;
+  skor_target?: number;
+  level_target?: RiskLevelKode;
+  pelaksanaan_mitigasi?: string;
+  realisasi_tingkat_risiko?: string;
+  skor_realisasi?: number;
+  level_realisasi?: RiskLevelKode;
+  penyebab_internal?: string;
+  penyebab_eksternal?: string;
+  source: RiskSource;
+  imported_by_id?: string;
+  imported_by_nama?: string;
+  created_at: string;
+  updated_at?: string;
 }
 
 // ── Notifications ────────────────────────────────────────────
@@ -99,7 +117,7 @@ export interface Notification {
 }
 
 // ── Annual Audit Plans ───────────────────────────────────────
-export type StatusPKPT     = 'Draft' | 'Final';
+export type StatusPKPT     = 'Open' | 'On Progress' | 'Closed';
 export type JenisProgram   = 'PKPT' | 'Non PKPT';
 export type KategoriProgram = 'Assurance' | 'Non Assurance' | 'Pemantauan Risiko' | 'Evaluasi';
 export type StatusProgram  = 'Mandatory' | 'Strategis' | 'Emerging Risk';
@@ -129,7 +147,6 @@ export interface User {
   nik: string;
   nama: string;
   email: string;
-  kontak_email?: string;
   role: UserRole;
   jabatan?: string;
   direktorat_id?: string;

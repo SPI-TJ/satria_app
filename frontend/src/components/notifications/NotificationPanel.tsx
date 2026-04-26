@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Bell, X, Check, Trash2, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, X, Check, Trash2, AlertCircle, CheckCircle2, Info, Award } from 'lucide-react';
 import { useNotificationStore } from '../../store/notification.store';
 import { notificationsApi } from '../../services/api';
 import { Notification, NotificationType } from '../../types';
@@ -7,21 +8,24 @@ import { formatDistanceToNow } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 
-const TABS = ['All', 'Unread', 'Risk', 'Program', 'System'] as const;
+const TABS = ['All', 'Unread', 'Risk', 'Program', 'System', 'Evaluation'] as const;
 
 const TYPE_ICON: Record<NotificationType, JSX.Element> = {
-  Risk:    <AlertCircle  className="w-5 h-5 text-red-500"    />,
-  Program: <CheckCircle2 className="w-5 h-5 text-green-500"  />,
-  System:  <Info         className="w-5 h-5 text-yellow-500" />,
+  Risk:       <AlertCircle  className="w-5 h-5 text-red-500"     />,
+  Program:    <CheckCircle2 className="w-5 h-5 text-green-500"   />,
+  System:     <Info         className="w-5 h-5 text-yellow-500"  />,
+  Evaluation: <Award        className="w-5 h-5 text-purple-500"  />,
 };
 
 const TYPE_BG: Record<NotificationType, string> = {
-  Risk:    'bg-red-50',
-  Program: 'bg-green-50',
-  System:  'bg-yellow-50',
+  Risk:       'bg-red-50',
+  Program:    'bg-green-50',
+  System:     'bg-yellow-50',
+  Evaluation: 'bg-purple-50',
 };
 
 export default function NotificationPanel() {
+  const navigate = useNavigate();
   const panelRef = useRef<HTMLDivElement>(null);
   const {
     notifications, unreadCount, isPanelOpen, activeTab,
@@ -62,6 +66,17 @@ export default function NotificationPanel() {
   async function handleDelete(id: string) {
     removeItem(id);
     await notificationsApi.delete(id).catch(() => null);
+  }
+
+  async function handleOpen(n: Notification) {
+    if (!n.is_read) {
+      markRead(n.id);
+      notificationsApi.markAsRead(n.id).catch(() => null);
+    }
+    if (n.link_url) {
+      closePanel();
+      navigate(n.link_url);
+    }
   }
 
   return (
@@ -129,6 +144,7 @@ export default function NotificationPanel() {
               notification={n}
               onMarkRead={() => handleMarkRead(n)}
               onDelete={() => handleDelete(n.id)}
+              onOpen={() => handleOpen(n)}
             />
           ))
         )}
@@ -141,16 +157,20 @@ function NotificationItem({
   notification: n,
   onMarkRead,
   onDelete,
+  onOpen,
 }: {
   notification: Notification;
   onMarkRead: () => void;
   onDelete: () => void;
+  onOpen: () => void;
 }) {
+  const clickable = Boolean(n.link_url);
   return (
     <div
+      onClick={clickable ? onOpen : undefined}
       className={`flex gap-3 px-4 py-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${
-        !n.is_read ? 'bg-blue-50/30' : ''
-      }`}
+        clickable ? 'cursor-pointer' : ''
+      } ${!n.is_read ? 'bg-blue-50/30' : ''}`}
     >
       {/* Icon */}
       <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${TYPE_BG[n.type]}`}>
@@ -173,8 +193,9 @@ function NotificationItem({
             {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: localeId })}
           </span>
           <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-            n.type === 'Risk'    ? 'bg-red-100 text-red-600' :
-            n.type === 'Program' ? 'bg-green-100 text-green-600' :
+            n.type === 'Risk'       ? 'bg-red-100 text-red-600' :
+            n.type === 'Program'    ? 'bg-green-100 text-green-600' :
+            n.type === 'Evaluation' ? 'bg-purple-100 text-purple-600' :
             'bg-yellow-100 text-yellow-700'
           }`}>
             {n.type}
@@ -182,13 +203,16 @@ function NotificationItem({
           <div className="flex items-center gap-2 ml-auto">
             {!n.is_read && (
               <button
-                onClick={onMarkRead}
+                onClick={(e) => { e.stopPropagation(); onMarkRead(); }}
                 className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-primary-600 transition-colors"
               >
                 <Check className="w-3 h-3" /> Mark as read
               </button>
             )}
-            <button onClick={onDelete} className="text-slate-300 hover:text-red-400 transition-colors">
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="text-slate-300 hover:text-red-400 transition-colors"
+            >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../../config/database';
+import logger from '../../utils/logger';
 
 // GET /api/auditors — daftar auditor aktif untuk penugasan tim
 export async function getAuditors(req: Request, res: Response) {
@@ -19,9 +20,10 @@ export async function getAuditors(req: Request, res: Response) {
          nama_lengkap ASC`,
     );
 
+    logger.info('[AUDITORS] Fetched auditors list');
     return res.json({ success: true, data: result.rows });
   } catch (err) {
-    console.error('[auditors.getAll]', err);
+    logger.error(`[AUDITORS] Get auditors failed: ${(err as Error).message}`, { error: err });
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan server.' });
   }
 }

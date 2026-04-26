@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  X, Loader2, Users, CalendarDays, AlertCircle,
-  Search, CheckCircle2, ChevronDown,
+  X, Loader2, Users, CalendarDays, AlertCircle, AlertTriangle,
+  Search, CheckCircle2, ChevronDown, Building2,
 } from 'lucide-react';
-import { annualPlansApi, auditorsApi, risksApi, CreatePlanPayload } from '../../../services/api';
-import { AnnualAuditPlan, Auditor, JenisProgram, KategoriProgram, RiskData, RiskLevel, StatusProgram } from '../../../types';
+import { annualPlansApi, auditorsApi, risksApi, workloadApi, organisasiApi, CreatePlanPayload } from '../../../services/api';
+import { AnnualAuditPlan, AnnualAuditPlanDetail, Auditor, Departemen, Divisi, JenisProgram, KategoriProgram, RiskData, RiskLevelKode, StatusProgram } from '../../../types';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -27,20 +27,25 @@ interface FormState {
   pengendali_teknis_id: string;
   ketua_tim_id:        string;
   anggota_ids:         string[];
+  team_alokasi:        Record<string, string>;  // user_id -> hari (string supaya input nyaman)
   risk_ids:            string[];
+  // Finansial (Fase 5 — disederhanakan)
+  anggaran:            string;            // simpan sebagai string supaya input tetap nyaman
+  kategori_anggaran:   '' | 'Subsidi' | 'Non Subsidi';
 }
 
 const KATEGORI_OPTIONS: KategoriProgram[] = ['Assurance', 'Non Assurance', 'Pemantauan Risiko', 'Evaluasi'];
 const STATUS_OPTIONS:   StatusProgram[]   = ['Mandatory', 'Strategis', 'Emerging Risk'];
 
-const LEVEL_BADGE: Record<RiskLevel, string> = {
-  Critical: 'bg-red-100 text-red-700',
-  High:     'bg-orange-50 text-orange-700',
-  Medium:   'bg-yellow-50 text-yellow-700',
-  Low:      'bg-green-50 text-green-700',
+const LEVEL_BADGE: Record<RiskLevelKode, string> = {
+  E:  'bg-red-100 text-red-700',
+  T:  'bg-orange-50 text-orange-700',
+  MT: 'bg-amber-50 text-amber-700',
+  M:  'bg-yellow-50 text-yellow-700',
+  RM: 'bg-lime-50 text-lime-700',
+  R:  'bg-green-50 text-green-700',
 };
 
-// ── Auto-calc estimasi hari (inklusif) ─────────────────────────
 function calcEstimasi(mulai: string, selesai: string): number {
   if (!mulai || !selesai) return 0;
   const diff = Math.round(
@@ -64,59 +69,166 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
     pengendali_teknis_id: '',
     ketua_tim_id:         '',
     anggota_ids:          [],
+    team_alokasi:         {},
     risk_ids:             [],
+    anggaran:             '',
+    kategori_anggaran:    '',
   });
 
   const [riskSearch,   setRiskSearch]   = useState('');
   const [anggotaOpen,  setAnggotaOpen]  = useState(false);
+  const [auditeeOpen,  setAuditeeOpen]  = useState(false);
+  const [auditeeSearch, setAuditeeSearch] = useState('');
+  const [selectedAuditeeDeptIds, setSelectedAuditeeDeptIds] = useState<string[]>([]);
 
-  // ── Populate form on edit ────────────────────────────────────
-  const { data: detailRes } = useQuery({
+  // 1. Query Detail Program
+  const { data: detailRes, isError: isDetailError } = useQuery({
     queryKey: ['annual-plan-detail', editData?.id],
-    queryFn:  () => annualPlansApi.getById(editData!.id).then((r) => r.data.data!),
-    enabled:  !!editData?.id,
+    queryFn: async () => {
+      const res = await annualPlansApi.getById(editData!.id);
+      return res.data.data as AnnualAuditPlanDetail;
+    },
+    enabled: !!editData?.id,
   });
 
   useEffect(() => {
+    if (isDetailError) toast.error('Gagal memuat data program untuk diedit');
+  }, [isDetailError]);
+
+  // Safeguard pengisian data agar tidak crash jika dari API bernilai null/undefined
+  useEffect(() => {
     if (detailRes) {
-      const pengendalId = detailRes.team.find((t) => t.role_tim === 'Pengendali Teknis')?.user_id ?? '';
-      const ketuaId     = detailRes.team.find((t) => t.role_tim === 'Ketua Tim')?.user_id ?? '';
-      const anggotaIds  = detailRes.team.filter((t) => t.role_tim === 'Anggota Tim').map((t) => t.user_id);
-      const riskIds     = detailRes.risks.map((r) => r.id);
+      const pengendalId = detailRes.team?.find((t) => t.role_tim === 'Pengendali Teknis')?.user_id ?? '';
+      const ketuaId     = detailRes.team?.find((t) => t.role_tim === 'Ketua Tim')?.user_id ?? '';
+      const anggotaIds  = detailRes.team?.filter((t) => t.role_tim === 'Anggota Tim').map((t) => t.user_id) ?? [];
+      const riskIds     = detailRes.risks?.map((r) => r.id) ?? [];
+      const teamAlokasi: Record<string, string> = {};
+      (detailRes.team ?? []).forEach((t) => {
+        if (t.hari_alokasi != null) teamAlokasi[t.user_id] = String(t.hari_alokasi);
+      });
 
       setForm({
-        jenis_program:        detailRes.jenis_program,
-        judul_program:        detailRes.judul_program,
-        kategori_program:     detailRes.kategori_program,
-        status_program:       detailRes.status_program,
-        auditee:              detailRes.auditee ?? '',
-        deskripsi:            detailRes.deskripsi ?? '',
-        tanggal_mulai:        detailRes.tanggal_mulai?.slice(0, 10) ?? '',
-        tanggal_selesai:      detailRes.tanggal_selesai?.slice(0, 10) ?? '',
+        jenis_program:        (detailRes.jenis_program as JenisProgram) || 'PKPT',
+        judul_program:        detailRes.judul_program || '',
+        kategori_program:     (detailRes.kategori_program as KategoriProgram) || 'Assurance',
+        status_program:       (detailRes.status_program as StatusProgram) || 'Mandatory',
+        auditee:              detailRes.auditee || '',
+        deskripsi:            detailRes.deskripsi || '',
+        tanggal_mulai:        detailRes.tanggal_mulai?.slice(0, 10) || '',
+        tanggal_selesai:      detailRes.tanggal_selesai?.slice(0, 10) || '',
         pengendali_teknis_id: pengendalId,
         ketua_tim_id:         ketuaId,
         anggota_ids:          anggotaIds,
+        team_alokasi:         teamAlokasi,
         risk_ids:             riskIds,
+        anggaran:             detailRes.anggaran != null ? String(detailRes.anggaran) : '',
+        kategori_anggaran:    (detailRes.kategori_anggaran ?? '') as FormState['kategori_anggaran'],
       });
     }
   }, [detailRes]);
 
-  // ── Data fetching ────────────────────────────────────────────
   const { data: auditorsRes } = useQuery({
     queryKey: ['auditors'],
-    queryFn:  () => auditorsApi.getAll().then((r) => r.data.data ?? []),
+    queryFn: async () => {
+      const res = await auditorsApi.getAll();
+      return res.data.data as Auditor[];
+    },
   });
 
-  const { data: riskRes } = useQuery({
+  const { data: divisiRes, isLoading: isDivisiLoading } = useQuery({
+    queryKey: ['dropdown-divisi'],
+    queryFn: async () => {
+      const res = await organisasiApi.getDivisis();
+      return (res.data.data ?? []) as Divisi[];
+    },
+    staleTime: 3600_000,
+  });
+
+  const { data: departemenRes, isLoading: isDepartemenLoading } = useQuery({
+    queryKey: ['dropdown-departemen-all'],
+    queryFn: async () => {
+      const res = await organisasiApi.getDepartemens();
+      return (res.data.data ?? []) as Departemen[];
+    },
+    staleTime: 3600_000,
+  });
+
+const { data: riskRes } = useQuery({
     queryKey: ['risks-for-program', tahun],
-    queryFn:  () => risksApi.getAll({ tahun, limit: 100 }).then((r) => r.data.data ?? []),
-    enabled:  form.jenis_program === 'PKPT',
+    queryFn: async () => {
+      const res = await risksApi.getAll({ tahun, limit: 100 });
+      return res.data.data as unknown;
+    },
+    enabled: form.jenis_program === 'PKPT',
   });
 
   const auditors: Auditor[] = auditorsRes ?? [];
-  const allRisks: RiskData[] = riskRes ?? [];
+  const divisiList: Divisi[] = divisiRes ?? [];
+  const departemenList: Departemen[] = departemenRes ?? [];
+  const divisiById = useMemo(() => new Map(divisiList.map((d) => [d.id, d])), [divisiList]);
+  const departemenById = useMemo(() => new Map(departemenList.map((d) => [d.id, d])), [departemenList]);
+  const allRisks: RiskData[] = Array.isArray(riskRes)
+    ? (riskRes as RiskData[])
+    : ((riskRes as { data?: RiskData[] })?.data ?? []);
 
-  // ── Computed values ──────────────────────────────────────────
+  const formatAuditee = (deptIds: string[]) => {
+    const groups = new Map<string, { divisiName: string; deptNames: string[] }>();
+
+    deptIds
+      .map((id) => departemenById.get(id))
+      .filter((dept): dept is Departemen => !!dept)
+      .forEach((dept) => {
+        const divisiName = divisiById.get(dept.divisi_id)?.nama ?? 'Divisi belum terpetakan';
+        const current = groups.get(dept.divisi_id) ?? { divisiName, deptNames: [] };
+        current.deptNames.push(dept.nama);
+        groups.set(dept.divisi_id, current);
+      });
+
+    return Array.from(groups.values())
+      .map((group) => `${group.divisiName}: ${group.deptNames.join(', ')}`)
+      .join('; ');
+  };
+
+  const selectedAuditeeGroups = useMemo(() => {
+    const groups = new Map<string, { divisiName: string; departments: Departemen[] }>();
+
+    selectedAuditeeDeptIds
+      .map((id) => departemenById.get(id))
+      .filter((dept): dept is Departemen => !!dept)
+      .forEach((dept) => {
+        const divisiName = divisiById.get(dept.divisi_id)?.nama ?? 'Divisi belum terpetakan';
+        const current = groups.get(dept.divisi_id) ?? { divisiName, departments: [] };
+        current.departments.push(dept);
+        groups.set(dept.divisi_id, current);
+      });
+
+    return Array.from(groups.values());
+  }, [departemenById, divisiById, selectedAuditeeDeptIds]);
+
+  const filteredDepartemen = useMemo(() => {
+    const q = auditeeSearch.trim().toLowerCase();
+    return departemenList.filter((dept) => {
+      const divisiName = divisiById.get(dept.divisi_id)?.nama ?? '';
+      return !q ||
+        dept.nama.toLowerCase().includes(q) ||
+        (dept.kode ?? '').toLowerCase().includes(q) ||
+        divisiName.toLowerCase().includes(q);
+    });
+  }, [auditeeSearch, departemenList, divisiById]);
+
+  useEffect(() => {
+    if (!detailRes?.auditee || departemenList.length === 0 || selectedAuditeeDeptIds.length > 0) return;
+
+    const auditeeText = detailRes.auditee.toLowerCase();
+    const matchedDeptIds = departemenList
+      .filter((dept) => auditeeText.includes(dept.nama.toLowerCase()))
+      .map((dept) => dept.id);
+
+    if (matchedDeptIds.length > 0) {
+      setSelectedAuditeeDeptIds(matchedDeptIds);
+    }
+  }, [departemenList, detailRes?.auditee, selectedAuditeeDeptIds.length]);
+
   const estimasi_hari = useMemo(
     () => calcEstimasi(form.tanggal_mulai, form.tanggal_selesai),
     [form.tanggal_mulai, form.tanggal_selesai],
@@ -130,59 +242,86 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
     [form.pengendali_teknis_id, form.ketua_tim_id, form.anggota_ids],
   );
 
+  const ketuaIds   = useMemo(() => (form.ketua_tim_id ? [form.ketua_tim_id] : []), [form.ketua_tim_id]);
+  const anggotaIds = form.anggota_ids;
+  const canSimulate = !!form.tanggal_mulai && !!form.tanggal_selesai && form.tanggal_selesai >= form.tanggal_mulai && (ketuaIds.length + anggotaIds.length) > 0;
+
+  const simKetua = useQuery({
+    queryKey: ['workload-sim', 'ketua', ketuaIds, form.tanggal_mulai, form.tanggal_selesai],
+    queryFn: () => workloadApi.simulate({ user_ids: ketuaIds, tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai, role_tim: 'Ketua Tim' }).then((r) => r.data),
+    enabled: canSimulate && ketuaIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  const simAnggota = useQuery({
+    queryKey: ['workload-sim', 'anggota', anggotaIds, form.tanggal_mulai, form.tanggal_selesai],
+    queryFn: () => workloadApi.simulate({ user_ids: anggotaIds, tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai, role_tim: 'Anggota Tim' }).then((r) => r.data),
+    enabled: canSimulate && anggotaIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  const overworkAlerts = useMemo(() => {
+    const alerts: { user_id: string; nama: string; role_tim: string; months: number[] }[] = [];
+    const byId = (id: string) => auditors.find((a) => a.id === id)?.nama_lengkap ?? 'Auditor';
+    (simKetua.data?.data ?? []).filter((r) => r.is_overwork).forEach((r) =>
+      alerts.push({ user_id: r.user_id, nama: byId(r.user_id), role_tim: 'Ketua Tim', months: r.overwork_months }),
+    );
+    (simAnggota.data?.data ?? []).filter((r) => r.is_overwork).forEach((r) =>
+      alerts.push({ user_id: r.user_id, nama: byId(r.user_id), role_tim: 'Anggota Tim', months: r.overwork_months }),
+    );
+    return alerts;
+  }, [simKetua.data, simAnggota.data, auditors]);
+
   const filteredRisks = useMemo(
     () =>
       allRisks.filter((r) =>
         !riskSearch ||
-        r.risk_code.toLowerCase().includes(riskSearch.toLowerCase()) ||
-        r.risk_description.toLowerCase().includes(riskSearch.toLowerCase()) ||
+        (r.id_risiko ?? '').toLowerCase().includes(riskSearch.toLowerCase()) ||
+        (r.nama_risiko ?? '').toLowerCase().includes(riskSearch.toLowerCase()) || // Mencegah crash jika nama_risiko null
         (r.divisi ?? '').toLowerCase().includes(riskSearch.toLowerCase()),
       ),
     [allRisks, riskSearch],
   );
 
-  // ── Auditors split by role ────────────────────────────────────
-  const pengendaliOptions = auditors.filter((a) =>
-    ['kepala_spi', 'pengendali_teknis'].includes(a.role),
-  );
-  const ketuaOptions = auditors.filter((a) =>
-    ['pengendali_teknis', 'anggota_tim'].includes(a.role),
-  );
-  const anggotaOptions = auditors.filter((a) =>
-    ['pengendali_teknis', 'anggota_tim'].includes(a.role),
-  );
+  const pengendaliOptions = auditors.filter((a) => ['kepala_spi', 'pengendali_teknis'].includes(a.role));
+  const ketuaOptions = auditors.filter((a) => ['pengendali_teknis', 'anggota_tim'].includes(a.role));
+  const anggotaOptions = auditors.filter((a) => ['pengendali_teknis', 'anggota_tim'].includes(a.role));
 
-  // ── Helpers ──────────────────────────────────────────────────
   const set = (k: keyof FormState, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
   function toggleAnggota(uid: string) {
     setForm((f) => ({
       ...f,
-      anggota_ids: f.anggota_ids.includes(uid)
-        ? f.anggota_ids.filter((x) => x !== uid)
-        : [...f.anggota_ids, uid],
+      anggota_ids: f.anggota_ids.includes(uid) ? f.anggota_ids.filter((x) => x !== uid) : [...f.anggota_ids, uid],
     }));
+  }
+
+  function toggleAuditeeDept(deptId: string) {
+    setSelectedAuditeeDeptIds((prev) => {
+      const next = prev.includes(deptId) ? prev.filter((id) => id !== deptId) : [...prev, deptId];
+      setForm((f) => ({ ...f, auditee: formatAuditee(next) }));
+      return next;
+    });
+  }
+
+  function clearAuditeeSelection() {
+    setSelectedAuditeeDeptIds([]);
+    set('auditee', '');
+    setAuditeeSearch('');
   }
 
   function toggleRisk(id: string) {
     setForm((f) => ({
       ...f,
-      risk_ids: f.risk_ids.includes(id)
-        ? f.risk_ids.filter((x) => x !== id)
-        : [...f.risk_ids, id],
+      risk_ids: f.risk_ids.includes(id) ? f.risk_ids.filter((x) => x !== id) : [...f.risk_ids, id],
     }));
   }
 
-  const isValid =
-    form.judul_program.trim() !== '' &&
-    form.tanggal_mulai !== '' &&
-    form.tanggal_selesai !== '' &&
-    form.tanggal_selesai >= form.tanggal_mulai;
-
-  // ── Mutation ─────────────────────────────────────────────────
   const saveMut = useMutation({
     mutationFn: () => {
       const payload: CreatePlanPayload = {
+        // Pastikan tahun perencanaan konsisten dengan filter tahun di halaman
+        tahun_perencanaan:     `${tahun}-01-01`,
         jenis_program:        form.jenis_program,
         kategori_program:     form.kategori_program,
         judul_program:        form.judul_program,
@@ -194,42 +333,62 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
         pengendali_teknis_id: form.pengendali_teknis_id || undefined,
         ketua_tim_id:         form.ketua_tim_id || undefined,
         anggota_ids:          form.anggota_ids.length > 0 ? form.anggota_ids : undefined,
+        team_alokasi:         (() => {
+          const out: Record<string, number> = {};
+          Object.entries(form.team_alokasi).forEach(([uid, v]) => {
+            if (v !== '' && v != null) {
+              const n = Number(v);
+              if (Number.isFinite(n) && n >= 0) out[uid] = n;
+            }
+          });
+          return Object.keys(out).length > 0 ? out : undefined;
+        })(),
         risk_ids:             form.jenis_program === 'PKPT' && form.risk_ids.length > 0 ? form.risk_ids : undefined,
+        // Finansial (Fase 5 — disederhanakan)
+        anggaran:             form.anggaran          === '' ? null : Number(form.anggaran),
+        kategori_anggaran:    form.kategori_anggaran === '' ? null : form.kategori_anggaran,
       };
-      return isEdit
-        ? annualPlansApi.update(editData!.id, payload)
-        : annualPlansApi.create(payload);
+      return isEdit ? annualPlansApi.update(editData!.id, payload) : annualPlansApi.create(payload);
     },
     onSuccess: () => {
       toast.success(isEdit ? 'Program berhasil diperbarui' : 'Program kerja berhasil dibuat');
       onSuccess();
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'Gagal menyimpan program';
+      const errorResponse = err as { response?: { data?: { message?: string } } };
+      const msg = errorResponse?.response?.data?.message ?? 'Gagal menyimpan program';
       toast.error(msg);
     },
   });
 
   const selectedAuditorNames = [
-    form.pengendali_teknis_id
-      ? auditors.find((a) => a.id === form.pengendali_teknis_id)?.nama_lengkap
-      : null,
-    form.ketua_tim_id
-      ? auditors.find((a) => a.id === form.ketua_tim_id)?.nama_lengkap
-      : null,
-    ...form.anggota_ids
-      .map((id) => auditors.find((a) => a.id === id)?.nama_lengkap)
-      .filter(Boolean),
+    form.pengendali_teknis_id ? auditors.find((a) => a.id === form.pengendali_teknis_id)?.nama_lengkap : null,
+    form.ketua_tim_id ? auditors.find((a) => a.id === form.ketua_tim_id)?.nama_lengkap : null,
+    ...form.anggota_ids.map((id) => auditors.find((a) => a.id === id)?.nama_lengkap).filter(Boolean),
   ].filter(Boolean) as string[];
+
+  // ── FUNGSI VALIDASI KLIK (Akan memunculkan pop-up jika gagal) ──
+  const handleSaveClick = () => {
+    if (!form.judul_program?.trim()) {
+      return toast.error('Mohon isi Judul Program terlebih dahulu.');
+    }
+    if (!form.tanggal_mulai || !form.tanggal_selesai) {
+      return toast.error('Mohon isi Tanggal Mulai dan Tanggal Selesai.');
+    }
+    if (form.tanggal_selesai < form.tanggal_mulai) {
+      return toast.error('Tanggal Selesai tidak boleh lebih awal dari Tanggal Mulai.');
+    }
+    
+    // Jika semua lolos, jalankan proses simpan ke backend
+    saveMut.mutate();
+  };
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl pointer-events-auto flex flex-col max-h-[92vh] overflow-hidden">
-
-          {/* ── Header ─────────────────────────────────────── */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-xl flex flex-col max-h-[92vh] overflow-hidden">
+          
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
             <div>
               <h2 className="font-bold text-slate-800 text-base">
@@ -237,56 +396,40 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">Tahun {tahun}</p>
             </div>
-            <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+            <button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          {/* ── Body ──────────────────────────────────────── */}
           <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
-
-            {/* ══ SEKSI 1: Informasi Program ══════════════════ */}
             <section>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
-                Informasi Program
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-
-                {/* Jenis Program */}
-                <div className="col-span-2">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Informasi Program</h3>
+              
+              {/* === LAYOUT INPUT VERTIKAL === */}
+              <div className="flex flex-col gap-4">
+                
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-2">
                     Jenis Program <span className="text-red-500">*</span>
                   </label>
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
                     {(['PKPT', 'Non PKPT'] as JenisProgram[]).map((j) => (
                       <button
-                        key={j}
-                        type="button"
-                        onClick={() => set('jenis_program', j)}
+                        key={j} type="button" onClick={() => set('jenis_program', j)}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
-                          form.jenis_program === j
-                            ? 'border-primary-500 bg-primary-50 text-primary-700'
-                            : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                          form.jenis_program === j ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'
                         }`}
                       >
                         {j}
-                        {j === 'PKPT' && (
-                          <span className="block text-xs font-normal text-current opacity-60 mt-0.5">
-                            Berbasis risiko
-                          </span>
-                        )}
-                        {j === 'Non PKPT' && (
-                          <span className="block text-xs font-normal text-current opacity-60 mt-0.5">
-                            Independen / Ad-hoc
-                          </span>
-                        )}
+                        <span className="block text-xs font-normal text-current opacity-60 mt-0.5">
+                          {j === 'PKPT' ? 'Berbasis risiko' : 'Independen / Ad-hoc'}
+                        </span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Judul Program */}
-                <div className="col-span-2">
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                     Judul Program <span className="text-red-500">*</span>
                   </label>
@@ -294,41 +437,131 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
                     value={form.judul_program}
                     onChange={(e) => set('judul_program', e.target.value)}
                     placeholder="cth: Audit Keuangan & Pengadaan Q1 2026"
-                    className="input text-sm"
+                    className="input text-sm w-full"
                   />
                 </div>
 
-                {/* Kategori */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kategori</label>
-                  <select value={form.kategori_program} onChange={(e) => set('kategori_program', e.target.value)} className="input text-sm">
+                  <select value={form.kategori_program} onChange={(e) => set('kategori_program', e.target.value)} className="input text-sm w-full">
                     {KATEGORI_OPTIONS.map((k) => <option key={k}>{k}</option>)}
                   </select>
                 </div>
 
-                {/* Sifat */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Sifat Program</label>
-                  <select value={form.status_program} onChange={(e) => set('status_program', e.target.value)} className="input text-sm">
+                  <select value={form.status_program} onChange={(e) => set('status_program', e.target.value)} className="input text-sm w-full">
                     {STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
                   </select>
                 </div>
 
-                {/* Auditee */}
-                <div className="col-span-2">
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Auditee (Unit / Bagian yang Diaudit)
+                    Auditee (Departemen yang Diaudit)
                   </label>
-                  <input
-                    value={form.auditee}
-                    onChange={(e) => set('auditee', e.target.value)}
-                    placeholder="cth: Divisi Keuangan & Anggaran"
-                    className="input text-sm"
-                  />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setAuditeeOpen((open) => !open)}
+                      className="w-full min-h-[44px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm transition-colors hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-300"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className={selectedAuditeeDeptIds.length > 0 ? 'text-slate-700 font-medium' : 'text-slate-400'}>
+                          {selectedAuditeeDeptIds.length > 0
+                            ? `${selectedAuditeeDeptIds.length} departemen dipilih`
+                            : 'Pilih satu atau lebih departemen'}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${auditeeOpen ? 'rotate-180' : ''}`} />
+                      </div>
+                    </button>
+
+                    {auditeeOpen && (
+                      <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                        <div className="border-b border-slate-100 p-3">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                            <input
+                              value={auditeeSearch}
+                              onChange={(e) => setAuditeeSearch(e.target.value)}
+                              placeholder="Cari departemen atau divisi..."
+                              className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-xs focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-300"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="max-h-56 overflow-y-auto divide-y divide-slate-50">
+                          {isDivisiLoading || isDepartemenLoading ? (
+                            <div className="flex items-center justify-center gap-2 px-4 py-5 text-xs text-slate-400">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Memuat master departemen...
+                            </div>
+                          ) : filteredDepartemen.length === 0 ? (
+                            <p className="px-4 py-5 text-center text-xs text-slate-400">Departemen tidak ditemukan.</p>
+                          ) : (
+                            filteredDepartemen.map((dept) => {
+                              const checked = selectedAuditeeDeptIds.includes(dept.id);
+                              const divisiName = divisiById.get(dept.divisi_id)?.nama ?? 'Divisi belum terpetakan';
+
+                              return (
+                                <label
+                                  key={dept.id}
+                                  className={`flex cursor-pointer items-start gap-3 px-4 py-2.5 transition-colors ${checked ? 'bg-primary-50' : 'hover:bg-slate-50'}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleAuditeeDept(dept.id)}
+                                    className="mt-0.5 flex-shrink-0 rounded text-primary-600"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block text-sm font-medium text-slate-700">{dept.nama}</span>
+                                    <span className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+                                      <Building2 className="h-3 w-3" />
+                                      {divisiName}
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {selectedAuditeeDeptIds.length > 0 && (
+                          <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-3 py-2">
+                            <span className="text-xs font-medium text-slate-500">{selectedAuditeeDeptIds.length} departemen terpilih</span>
+                            <button type="button" onClick={clearAuditeeSelection} className="text-xs font-semibold text-red-600 hover:text-red-700">
+                              Hapus pilihan
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedAuditeeGroups.length > 0 ? (
+                    <div className="mt-3 rounded-xl border border-primary-100 bg-primary-50/60 px-3 py-3">
+                      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-primary-700">Divisi otomatis mengikuti</p>
+                      <div className="space-y-2">
+                        {selectedAuditeeGroups.map((group) => (
+                          <div key={group.divisiName}>
+                            <p className="text-xs font-semibold text-slate-700">{group.divisiName}</p>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {group.departments.map((dept) => (
+                                <span key={dept.id} className="rounded-full border border-primary-200 bg-white px-2 py-0.5 text-xs text-primary-700">
+                                  {dept.nama}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : form.auditee ? (
+                    <p className="mt-2 text-xs text-slate-400">Data lama: {form.auditee}</p>
+                  ) : null}
                 </div>
 
-                {/* Deskripsi */}
-                <div className="col-span-2">
+                <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                     Deskripsi / Latar Belakang
                   </label>
@@ -337,18 +570,55 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
                     value={form.deskripsi}
                     onChange={(e) => set('deskripsi', e.target.value)}
                     placeholder="Jelaskan latar belakang dan ruang lingkup program audit ini..."
-                    className="input text-sm resize-none"
+                    className="input text-sm resize-none w-full"
                   />
                 </div>
               </div>
             </section>
 
-            {/* ══ SEKSI 2: Timeline Pelaksanaan ═══════════════ */}
             <section className="border-t border-slate-100 pt-5">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
-                Timeline Pelaksanaan
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Anggaran</h3>
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                      Anggaran (Rupiah)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={form.anggaran}
+                      onChange={(e) => set('anggaran', e.target.value)}
+                      placeholder="cth: 25000000"
+                      className="input text-sm w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                      Kategori Anggaran
+                    </label>
+                    <select
+                      value={form.kategori_anggaran}
+                      onChange={(e) => set('kategori_anggaran', e.target.value as FormState['kategori_anggaran'])}
+                      className="input text-sm w-full"
+                    >
+                      <option value="">— Pilih Kategori —</option>
+                      <option value="Subsidi">Subsidi</option>
+                      <option value="Non Subsidi">Non Subsidi</option>
+                    </select>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 mt-1">
+                  <b>Man-Days terpakai</b> program ini dihitung otomatis dari tim × durasi × bobot peran. Pagu HP tahunan SPI dipantau lewat tab Man-Days.
+                </p>
+              </div>
+            </section>
+
+            <section className="border-t border-slate-100 pt-5">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Timeline Pelaksanaan</h3>
+              <div className="flex flex-col gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                     Tanggal Mulai <span className="text-red-500">*</span>
@@ -357,7 +627,7 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
                     type="date"
                     value={form.tanggal_mulai}
                     onChange={(e) => set('tanggal_mulai', e.target.value)}
-                    className="input text-sm"
+                    className="input text-sm w-full"
                   />
                 </div>
                 <div>
@@ -369,104 +639,62 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
                     value={form.tanggal_selesai}
                     min={form.tanggal_mulai}
                     onChange={(e) => set('tanggal_selesai', e.target.value)}
-                    className="input text-sm"
+                    className="input text-sm w-full"
                   />
                 </div>
               </div>
 
-              {/* Auto-calc badge */}
               {estimasi_hari > 0 && (
                 <div className="mt-3 flex items-center gap-2">
                   <CalendarDays className="w-4 h-4 text-primary-500" />
                   <span className="text-sm text-slate-600">
                     Estimasi Hari Kerja:
                     <span className="ml-2 font-bold text-primary-700 text-base">{estimasi_hari}</span>
-                    <span className="text-slate-400 text-xs ml-1">hari (dihitung otomatis)</span>
+                    <span className="text-slate-400 text-xs ml-1">hari</span>
                   </span>
-                </div>
-              )}
-
-              {form.tanggal_selesai && form.tanggal_mulai && form.tanggal_selesai < form.tanggal_mulai && (
-                <div className="mt-2 flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                  Tanggal selesai tidak boleh lebih awal dari tanggal mulai.
                 </div>
               )}
             </section>
 
-            {/* ══ SEKSI 3: Tim Auditor ════════════════════════ */}
             <section className="border-t border-slate-100 pt-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                  Tim Auditor (SDM)
-                </h3>
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tim Auditor (SDM)</h3>
                 {jumlah_personil > 0 && (
                   <div className="flex items-center gap-1.5 px-2.5 py-1 bg-primary-50 rounded-full">
                     <Users className="w-3.5 h-3.5 text-primary-600" />
-                    <span className="text-xs font-bold text-primary-700">
-                      {jumlah_personil} personil
-                    </span>
+                    <span className="text-xs font-bold text-primary-700">{jumlah_personil} personil</span>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-3">
-                {/* Pengendali Teknis */}
+              <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Pengendali Teknis
-                  </label>
-                  <select
-                    value={form.pengendali_teknis_id}
-                    onChange={(e) => set('pengendali_teknis_id', e.target.value)}
-                    className="input text-sm"
-                  >
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Pengendali Teknis</label>
+                  <select value={form.pengendali_teknis_id} onChange={(e) => set('pengendali_teknis_id', e.target.value)} className="input text-sm w-full">
                     <option value="">— Pilih Pengendali Teknis —</option>
                     {pengendaliOptions.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.nama_lengkap} ({a.role.replace('_', ' ')})
-                      </option>
+                      <option key={a.id} value={a.id}>{a.nama_lengkap} ({a.role.replace('_', ' ')})</option>
                     ))}
                   </select>
                 </div>
 
-                {/* Ketua Tim */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Ketua Tim
-                  </label>
-                  <select
-                    value={form.ketua_tim_id}
-                    onChange={(e) => set('ketua_tim_id', e.target.value)}
-                    className="input text-sm"
-                  >
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ketua Tim</label>
+                  <select value={form.ketua_tim_id} onChange={(e) => set('ketua_tim_id', e.target.value)} className="input text-sm w-full">
                     <option value="">— Pilih Ketua Tim —</option>
                     {ketuaOptions.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.nama_lengkap} ({a.role.replace('_', ' ')})
-                      </option>
+                      <option key={a.id} value={a.id}>{a.nama_lengkap} ({a.role.replace('_', ' ')})</option>
                     ))}
                   </select>
                 </div>
 
-                {/* Anggota Tim */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                    Anggota Tim
-                    {form.anggota_ids.length > 0 && (
-                      <span className="ml-2 text-primary-600">({form.anggota_ids.length} dipilih)</span>
-                    )}
+                    Anggota Tim {form.anggota_ids.length > 0 && <span className="ml-2 text-primary-600">({form.anggota_ids.length} dipilih)</span>}
                   </label>
-
-                  <button
-                    type="button"
-                    onClick={() => setAnggotaOpen((o) => !o)}
-                    className="w-full flex items-center justify-between input text-sm text-left"
-                  >
+                  <button type="button" onClick={() => setAnggotaOpen((o) => !o)} className="w-full flex items-center justify-between input text-sm text-left">
                     <span className={form.anggota_ids.length > 0 ? 'text-slate-700' : 'text-slate-400'}>
-                      {form.anggota_ids.length > 0
-                        ? `${form.anggota_ids.length} anggota dipilih`
-                        : '— Pilih Anggota Tim —'}
+                      {form.anggota_ids.length > 0 ? `${form.anggota_ids.length} anggota dipilih` : '— Pilih Anggota Tim —'}
                     </span>
                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${anggotaOpen ? 'rotate-180' : ''}`} />
                   </button>
@@ -480,22 +708,10 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
                           anggotaOptions.map((a) => {
                             const checked = form.anggota_ids.includes(a.id);
                             return (
-                              <label
-                                key={a.id}
-                                className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                                  checked ? 'bg-primary-50' : 'hover:bg-slate-50'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleAnggota(a.id)}
-                                  className="rounded text-primary-600 flex-shrink-0"
-                                />
+                              <label key={a.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-primary-50' : 'hover:bg-slate-50'}`}>
+                                <input type="checkbox" checked={checked} onChange={() => toggleAnggota(a.id)} className="rounded text-primary-600 flex-shrink-0" />
                                 <span className="text-sm text-slate-700 flex-1">{a.nama_lengkap}</span>
-                                <span className="text-xs text-slate-400 capitalize">
-                                  {a.role.replace('_', ' ')}
-                                </span>
+                                <span className="text-xs text-slate-400 capitalize">{a.role.replace('_', ' ')}</span>
                               </label>
                             );
                           })
@@ -505,149 +721,118 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
                   )}
                 </div>
 
-                {/* Nama Auditor preview */}
-                {selectedAuditorNames.length > 0 && (
+                {/* Alokasi Hari Kerja per Anggota (Fase 5 — fix Man-Days) */}
+                {(form.pengendali_teknis_id || form.ketua_tim_id || form.anggota_ids.length > 0) && (
                   <div className="bg-slate-50 rounded-xl px-4 py-3">
-                    <p className="text-xs font-semibold text-slate-500 mb-1.5">Tim Terpilih:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedAuditorNames.map((name) => (
-                        <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-700">
-                          <CheckCircle2 className="w-3 h-3 text-green-500" />
-                          {name}
-                        </span>
-                      ))}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-slate-600">Alokasi Hari Kerja per Anggota</p>
+                      <span className="text-[10px] text-slate-400">
+                        Default: {estimasi_hari || 0} hari (durasi program)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Isi <b>hari kerja aktual</b> untuk tiap anggota. Kosongkan untuk pakai default durasi program.
+                      Man-Days terpakai = Σ(hari × bobot peran).
+                    </p>
+                    <div className="space-y-1.5">
+                      {[
+                        form.pengendali_teknis_id && { uid: form.pengendali_teknis_id, role: 'Pengendali Teknis' as const },
+                        form.ketua_tim_id        && { uid: form.ketua_tim_id,        role: 'Ketua Tim' as const },
+                        ...form.anggota_ids.map((uid) => ({ uid, role: 'Anggota Tim' as const })),
+                      ]
+                        .filter((x): x is { uid: string; role: 'Pengendali Teknis' | 'Ketua Tim' | 'Anggota Tim' } => !!x)
+                        .map(({ uid, role }) => {
+                          const auditor = auditors.find((a) => a.id === uid);
+                          if (!auditor) return null;
+                          return (
+                            <div key={uid} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5">
+                              <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />
+                              <span className="text-xs text-slate-700 flex-1 truncate">{auditor.nama_lengkap}</span>
+                              <span className="text-[10px] text-slate-400 hidden sm:inline">{role}</span>
+                              <input
+                                type="number"
+                                min={0}
+                                value={form.team_alokasi[uid] ?? ''}
+                                onChange={(e) => setForm((f) => ({
+                                  ...f,
+                                  team_alokasi: { ...f.team_alokasi, [uid]: e.target.value },
+                                }))}
+                                placeholder={String(estimasi_hari || 0)}
+                                className="w-20 px-2 py-1 text-xs border border-slate-200 rounded text-right focus:outline-none focus:ring-1 focus:ring-primary-300"
+                              />
+                              <span className="text-[10px] text-slate-400">hari</span>
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
               </div>
             </section>
 
-            {/* ══ SEKSI 4: Risiko Terkait (PKPT only) ════════ */}
             {form.jenis_program === 'PKPT' && (
               <section className="border-t border-slate-100 pt-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                    Risiko Terkait
-                  </h3>
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Risiko Terkait</h3>
                   {form.risk_ids.length > 0 && (
-                    <span className="text-xs font-bold text-primary-700 bg-primary-50 px-2.5 py-1 rounded-full">
-                      {form.risk_ids.length} risiko dipilih
-                    </span>
+                    <span className="text-xs font-bold text-primary-700 bg-primary-50 px-2.5 py-1 rounded-full">{form.risk_ids.length} risiko dipilih</span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mb-3">
-                  Pilih risiko dari tahun {tahun} yang menjadi dasar penyusunan program PKPT ini.
-                </p>
-
-                {/* Search */}
+                
                 <div className="relative mb-2">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                  <input
-                    value={riskSearch}
-                    onChange={(e) => setRiskSearch(e.target.value)}
-                    placeholder="Cari risk code atau deskripsi..."
-                    className="input pl-8 text-xs py-2"
-                  />
+                  <input value={riskSearch} onChange={(e) => setRiskSearch(e.target.value)} placeholder="Cari risk code atau deskripsi..." className="input pl-8 text-xs py-2 w-full" />
                 </div>
 
-                {/* Risk checklist */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <div className="max-h-48 overflow-y-auto divide-y divide-slate-50">
                     {filteredRisks.length === 0 ? (
-                      <p className="px-4 py-6 text-xs text-slate-400 text-center">
-                        {allRisks.length === 0
-                          ? `Belum ada data risiko untuk tahun ${tahun}.`
-                          : 'Tidak ada risiko yang cocok dengan pencarian.'}
-                      </p>
+                      <p className="px-4 py-6 text-xs text-slate-400 text-center">Tidak ada risiko yang cocok.</p>
                     ) : (
                       filteredRisks.map((risk) => {
                         const checked = form.risk_ids.includes(risk.id);
                         return (
-                          <label
-                            key={risk.id}
-                            className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                              checked ? 'bg-primary-50' : 'hover:bg-slate-50'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleRisk(risk.id)}
-                              className="rounded text-primary-600 flex-shrink-0 mt-0.5"
-                            />
+                          <label key={risk.id} className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-primary-50' : 'hover:bg-slate-50'}`}>
+                            <input type="checkbox" checked={checked} onChange={() => toggleRisk(risk.id)} className="rounded text-primary-600 flex-shrink-0 mt-0.5" />
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className="font-mono text-xs font-bold text-primary-600">{risk.risk_code}</span>
-                                <span className={`text-xs px-1.5 py-0 rounded-full font-medium ${LEVEL_BADGE[risk.risk_level]}`}>
-                                  {risk.risk_level}
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-600 line-clamp-2">{risk.risk_description}</p>
-                              {risk.divisi && (
-                                <p className="text-xs text-slate-400 mt-0.5">{risk.divisi}</p>
-                              )}
+                              <p className="text-xs text-slate-600 line-clamp-2">{risk.nama_risiko}</p>
                             </div>
                           </label>
                         );
                       })
                     )}
                   </div>
-                  {filteredRisks.length > 0 && (
-                    <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-xs text-slate-400">{filteredRisks.length} risiko ditampilkan</span>
-                      {form.risk_ids.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => set('risk_ids', [])}
-                          className="text-xs text-slate-400 hover:text-slate-600"
-                        >
-                          Hapus semua pilihan
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
               </section>
             )}
           </div>
 
-          {/* ── Footer ─────────────────────────────────────── */}
           <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
-            {/* Summary strip */}
-            {(estimasi_hari > 0 || jumlah_personil > 0) && (
-              <div className="flex items-center gap-4 mb-4 bg-slate-50 rounded-xl px-4 py-2.5 text-xs text-slate-600">
-                {estimasi_hari > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <CalendarDays className="w-3.5 h-3.5 text-primary-500" />
-                    <strong>{estimasi_hari}</strong> hari kerja
-                  </span>
-                )}
-                {jumlah_personil > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-primary-500" />
-                    <strong>{jumlah_personil}</strong> personil
-                  </span>
-                )}
-                {form.jenis_program === 'PKPT' && form.risk_ids.length > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-primary-500" />
-                    <strong>{form.risk_ids.length}</strong> risiko terpilih
-                  </span>
-                )}
+            {overworkAlerts.length > 0 && (
+              <div className="mb-3 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-red-800">
+                  <p className="font-bold mb-1">Peringatan Overwork</p>
+                  <ul className="space-y-0.5">
+                    {overworkAlerts.map((a) => (
+                      <li key={a.user_id + a.role_tim}><b>{a.nama}</b> ({a.role_tim}) di bulan {a.months.join(', ')}.</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
-
+            
             <div className="flex items-center justify-end gap-3">
-              <button onClick={onClose} className="btn-secondary text-sm">
-                Batal
-              </button>
-              <button
-                onClick={() => saveMut.mutate()}
-                disabled={saveMut.isPending || !isValid}
+              <button type="button" onClick={onClose} className="btn-secondary text-sm">Batal</button>
+              {/* TOMBOL SIMPAN DIUBAH AGAR MEMBERIKAN ALERT JIKA ADA YANG KOSONG */}
+              <button 
+                type="button" 
+                onClick={handleSaveClick} 
+                disabled={saveMut.isPending} 
                 className="btn-primary text-sm flex items-center gap-2 disabled:opacity-40"
               >
                 {saveMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                {isEdit ? 'Simpan Perubahan' : 'Simpan sebagai Draft'}
+                {isEdit ? 'Simpan Perubahan' : 'Simpan Draft'}
               </button>
             </div>
           </div>

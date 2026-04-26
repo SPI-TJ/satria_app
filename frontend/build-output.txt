@@ -1,0 +1,70 @@
+
+> satria-frontend@1.0.0 build
+> tsc && vite build
+
+src/pages/module1/components/ProgramDetailModal.tsx(26,82): error TS2552: Cannot find name 'AnnualAuditPlanDetail'. Did you mean 'AnnualAuditPlan'?
+src/pages/module1/components/ProgramDetailModal.tsx(29,5): error TS2554: Expected 1-2 arguments, but got 3.
+src/pages/module1/components/ProgramDetailModal.tsx(63,27): error TS2339: Property 'jenis_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(67,28): error TS2339: Property 'jenis_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(70,27): error TS2339: Property 'status_pkpt' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(74,28): error TS2339: Property 'status_pkpt' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(77,28): error TS2339: Property 'status_pkpt' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(80,88): error TS2339: Property 'judul_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(82,26): error TS2339: Property 'kategori_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(82,53): error TS2339: Property 'status_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(82,84): error TS2339: Property 'tahun' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(131,41): error TS2339: Property 'tanggal_mulai' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(131,73): error TS2339: Property 'tanggal_selesai' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(137,81): error TS2339: Property 'estimasi_hari' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(146,65): error TS2339: Property 'auditee' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(154,77): error TS2339: Property 'team' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(160,23): error TS2339: Property 'deskripsi' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(163,81): error TS2339: Property 'deskripsi' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(168,23): error TS2339: Property 'team' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(168,36): error TS2339: Property 'team' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(172,29): error TS2339: Property 'team' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(172,39): error TS7006: Parameter 'member' implicitly has an 'any' type.
+src/pages/module1/components/ProgramDetailModal.tsx(195,23): error TS2339: Property 'risks' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(195,37): error TS2339: Property 'risks' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(198,45): error TS2339: Property 'risks' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(201,29): error TS2339: Property 'risks' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramDetailModal.tsx(201,40): error TS7006: Parameter 'risk' implicitly has an 'any' type.
+src/pages/module1/components/ProgramDetailModal.tsx(229,37): error TS2339: Property 'status_pkpt' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(76,40): error TS2552: Cannot find name 'AnnualAuditPlanDetail'. Did you mean 'AnnualAuditPlan'?
+src/pages/module1/components/ProgramFormModal.tsx(79,5): error TS2554: Expected 1-2 arguments, but got 3.
+src/pages/module1/components/ProgramFormModal.tsx(91,37): error TS2339: Property 'team' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(91,48): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/pages/module1/components/ProgramFormModal.tsx(92,37): error TS2339: Property 'team' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(92,48): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/pages/module1/components/ProgramFormModal.tsx(93,37): error TS2339: Property 'team' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(93,50): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/pages/module1/components/ProgramFormModal.tsx(93,91): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/pages/module1/components/ProgramFormModal.tsx(94,37): error TS2339: Property 'risks' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(94,48): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/pages/module1/components/ProgramFormModal.tsx(97,41): error TS2339: Property 'jenis_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(98,41): error TS2339: Property 'judul_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(99,41): error TS2339: Property 'kategori_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(100,41): error TS2339: Property 'status_program' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(101,41): error TS2339: Property 'auditee' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(102,41): error TS2339: Property 'deskripsi' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(103,41): error TS2339: Property 'tanggal_mulai' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(104,41): error TS2339: Property 'tanggal_selesai' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramFormModal.tsx(117,5): error TS2554: Expected 1-2 arguments, but got 3.
+src/pages/module1/components/ProgramFormModal.tsx(125,5): error TS2554: Expected 1-2 arguments, but got 3.
+src/pages/module1/components/ProgramFormModal.tsx(131,9): error TS2322: Type 'never[] | NonNullable<NoInfer_2<TQueryFnData>>' is not assignable to type 'Auditor[]'.
+  Type '{}' is missing the following properties from type 'Auditor[]': length, pop, push, concat, and 28 more.
+src/pages/module1/components/ProgramFormModal.tsx(132,9): error TS2322: Type 'never[] | NonNullable<NoInfer_2<TQueryFnData>>' is not assignable to type 'RiskData[]'.
+  Type '{}' is missing the following properties from type 'RiskData[]': length, pop, push, concat, and 28 more.
+src/pages/module1/components/ProgramTab.tsx(56,5): error TS2554: Expected 1-2 arguments, but got 3.
+src/pages/module1/components/ProgramTab.tsx(57,25): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/pages/module1/components/ProgramTab.tsx(66,26): error TS2339: Property 'data' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramTab.tsx(67,26): error TS2339: Property 'meta' does not exist on type 'NonNullable<NoInfer_2<TQueryFnData>>'.
+src/pages/module1/components/ProgramTab.tsx(154,49): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/pages/module1/components/ProgramTab.tsx(155,49): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/pages/module1/components/ProgramTab.tsx(156,49): error TS7006: Parameter 'p' implicitly has an 'any' type.
+src/pages/module1/components/ProgramTab.tsx(244,28): error TS7006: Parameter 'plan' implicitly has an 'any' type.
+src/pages/module1/components/ProgramTab.tsx(244,34): error TS7006: Parameter 'idx' implicitly has an 'any' type.
+src/pages/module1/components/ProgramTab.tsx(245,34): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<StatusPKPT, { cls: string; icon: ElementType<any, keyof IntrinsicElements>; }>'.
+src/pages/module1/components/ProgramTab.tsx(254,104): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<JenisProgram, string>'.
+src/pages/module1/components/RiskTab.tsx(489,11): error TS2322: Type '{ risk: RiskData; open: boolean; onClose: () => void; onEdit: (() => void) | undefined; onDelete: () => void; }' is not assignable to type 'IntrinsicAttributes & Props'.
+  Property 'open' does not exist on type 'IntrinsicAttributes & Props'.

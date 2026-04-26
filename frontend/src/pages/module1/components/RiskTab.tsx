@@ -1,549 +1,596 @@
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, Link2, Upload, RefreshCw, Loader2, Plus,
-  Eye, Pencil, Trash2, ChevronLeft, ChevronRight,
-  CloudUpload, FileSpreadsheet, X, AlertCircle,
+  Search, Eye, Trash2,
+  ChevronLeft, ChevronRight, BarChart3,
+  AlertTriangle, X, Download, Upload, Database,
 } from 'lucide-react';
-import { risksApi } from '../../../services/api';
-import { RiskData, RiskLevel, RiskStatus } from '../../../types';
+import { risksApi, organisasiApi, settingsApi } from '../../../services/api';
+import { RiskData, RiskLevelKode } from '../../../types';
 import { useAuthStore } from '../../../store/auth.store';
 import toast from 'react-hot-toast';
-import RiskFormModal from './RiskFormModal';
 import RiskDetailModal from './RiskDetailModal';
+import RiskFormModal from './RiskFormModal';
 
 interface Props { tahun: number; }
 
-const LEVEL_BADGE: Record<RiskLevel, string> = {
-  Critical: 'bg-red-100 text-red-700 border border-red-200',
-  High:     'bg-orange-50 text-orange-700 border border-orange-200',
-  Medium:   'bg-yellow-50 text-yellow-700 border border-yellow-200',
-  Low:      'bg-green-50 text-green-700 border border-green-200',
-};
+// ── Badge Risk Level ──────────────────────────────────────────
+export function RiskLevelBadge({ level, label, bg, text }: {
+  level?: string; label?: string; bg?: string; text?: string;
+}) {
+  if (!level) return <span className="text-slate-300 text-xs">—</span>;
+  const bgClass  = bg   || LEVEL_COLORS[level as RiskLevelKode]?.bg   || 'bg-slate-100';
+  const txtClass = text || LEVEL_COLORS[level as RiskLevelKode]?.text || 'text-slate-600';
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${bgClass} ${txtClass}`}>
+      {level}
+      {label && <span className="font-normal opacity-75">({label})</span>}
+    </span>
+  );
+}
 
-const STATUS_BADGE: Record<RiskStatus, string> = {
-  Open:      'bg-slate-100 text-slate-600',
-  Mitigated: 'bg-blue-50 text-blue-700',
-  Closed:    'bg-green-100 text-green-700',
+const LEVEL_COLORS: Record<RiskLevelKode, { bg: string; text: string }> = {
+  E:  { bg: 'bg-red-100',    text: 'text-red-700' },
+  T:  { bg: 'bg-orange-100', text: 'text-orange-700' },
+  MT: { bg: 'bg-amber-100',  text: 'text-amber-700' },
+  M:  { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+  RM: { bg: 'bg-lime-100',   text: 'text-lime-700' },
+  R:  { bg: 'bg-green-100',  text: 'text-green-700' },
 };
-
-type ImportPanel = 'trust' | 'file' | null;
 
 export default function RiskTab({ tahun }: Props) {
   const qc = useQueryClient();
   const { user } = useAuthStore();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const isAdmin = ['admin_spi', 'it_admin', 'kepala_spi'].includes(user?.role ?? '');
 
-  const [search,       setSearch]       = useState('');
-  const [divisi,       setDivisi]       = useState('');
-  const [departemen,   setDepartemen]   = useState('');
-  const [level,        setLevel]        = useState('');
-  const [page,         setPage]         = useState(1);
-  const [importPanel,  setImportPanel]  = useState<ImportPanel>(null);
-  const [dragOver,     setDragOver]     = useState(false);
-  const [formOpen,     setFormOpen]     = useState(false);
-  const [editRisk,     setEditRisk]     = useState<RiskData | null>(null);
-  const [detailRisk,   setDetailRisk]   = useState<RiskData | null>(null);
+  // ── State ──────────────────────────────────────────────────
+  const [search, setSearch] = useState('');
+  const [direktoratId, setDirektoratId] = useState('');
+  const [divisiId, setDivisiId] = useState('');
+  const [levelInherent, setLevelInherent] = useState('');
+  const [hosKategoriId, setHosKategoriId] = useState('');
+  const [page, setPage] = useState(1);
+
+  // Modals
+  const [detailRisk, setDetailRisk] = useState<RiskData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RiskData | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editRisk, setEditRisk] = useState<RiskData | null>(null);
 
-  const LIMIT = 10;
+  // Import / template
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
-  // ── Queries ─────────────────────────────────────────────────
-  const { data: trustStatus } = useQuery({
-    queryKey: ['trust-status'],
-    queryFn:  () => risksApi.getTrustStatus().then((r) => r.data),
+  async function handleDownloadTemplate() {
+    setDownloadingTemplate(true);
+    try {
+      const res = await risksApi.downloadTemplate();
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_import_risiko.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Template Excel berhasil diunduh');
+    } catch {
+      toast.error('Gagal mengunduh template');
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    toast('Fitur import Excel sedang dalam pengembangan. File: ' + file.name, { icon: '🛠️' });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  const LIMIT = 20;
+
+  // ── Queries ────────────────────────────────────────────────
+  const { data: risksRes, isLoading, isError } = useQuery({
+    queryKey: ['risks', { tahun, search, direktoratId, divisiId, levelInherent, hosKategoriId, page }],
+    queryFn: () => risksApi.getAll({
+      tahun,
+      search: search || undefined,
+      direktorat_id: direktoratId || undefined,
+      divisi_id: divisiId || undefined,
+      level_inherent: levelInherent || undefined,
+      hos_kategori_id: hosKategoriId || undefined,
+      page,
+      limit: LIMIT,
+    }),
+    staleTime: 30_000,
   });
 
-  const { data: divisiList } = useQuery({
-    queryKey: ['divisi-list', tahun],
-    queryFn:  () => risksApi.getDivisiList(tahun).then((r) => r.data.data ?? []),
+  const { data: direktoratsRes } = useQuery({
+    queryKey: ['direktorats-dropdown'],
+    queryFn: () => organisasiApi.getDirektorats(),
+    staleTime: 3600_000,
   });
 
-  // Payload queryFn disesuaikan dengan parameter departemen
-  const { data: riskRes, isLoading } = useQuery({
-    queryKey: ['risks', { tahun, search, divisi, departemen, level, page }],
-    queryFn:  () =>
-      risksApi.getAll({ tahun, search, divisi, department_name: departemen, level, page, limit: LIMIT } as any)
-        .then((r) => r.data),
-    placeholderData: (prev) => prev,
+  const { data: divisRes } = useQuery({
+    queryKey: ['divisi-dropdown', direktoratId],
+    queryFn: () => organisasiApi.getDivisis(direktoratId || undefined),
+    staleTime: 3600_000,
   });
 
-  const risks  = riskRes?.data ?? [];
-  const total  = riskRes?.meta?.total ?? 0;
-  const pages  = Math.ceil(total / LIMIT);
-  const isConnected = (trustStatus as { connected?: boolean })?.connected === true;
-
-  // Mendapatkan daftar departemen unik berdasarkan data risiko yang dirender
-  const deptList = Array.from(new Set(risks.map((r) => r.department_name).filter(Boolean)));
-
-  // ── Mutations ────────────────────────────────────────────────
-  const importTrust = useMutation({
-    mutationFn: () => {
-      const conn = (trustStatus as { data?: { id: string } })?.data;
-      return risksApi.importFromTrust(tahun, conn?.id);
-    },
-    onSuccess: (res) => {
-      toast.success(res.data.message ?? 'Import berhasil');
-      qc.invalidateQueries({ queryKey: ['risks'] });
-      qc.invalidateQueries({ queryKey: ['divisi-list'] });
-      setImportPanel(null);
-    },
-    onError: () => toast.error('Gagal import dari TRUST'),
+  const { data: levelRefRes } = useQuery({
+    queryKey: ['risk-level-ref'],
+    queryFn: () => risksApi.getLevelRef(),
+    staleTime: 3600_000,
   });
 
-  const importFile = useMutation({
-    mutationFn: (file: File) => risksApi.importFromFile(file, tahun),
-    onSuccess: (res) => {
-      const { imported, errors } = res.data.data as { imported: number; errors: string[] };
-      if (errors?.length) toast.error(`${errors.length} baris gagal`);
-      toast.success(`${imported} risiko berhasil diimpor`);
-      qc.invalidateQueries({ queryKey: ['risks'] });
-      qc.invalidateQueries({ queryKey: ['divisi-list'] });
-      setImportPanel(null);
-    },
-    onError: () => toast.error('Gagal memproses file'),
+  const { data: hosKategoriRes } = useQuery({
+    queryKey: ['hos-kategori-filter', tahun],
+    queryFn: () => settingsApi.getHosKategoris(tahun),
+    staleTime: 3600_000,
   });
 
+  // Extract data — axiosRes.data = API body, body.data = payload
+  const risksList   = risksRes?.data?.data?.data ?? [];
+  const meta        = risksRes?.data?.data?.meta;
+  const direktorats = direktoratsRes?.data?.data  ?? [];
+  const divisi      = divisRes?.data?.data        ?? [];
+  const levelRefs   = levelRefRes?.data?.data     ?? [];
+  const hosKategoris = hosKategoriRes?.data?.data ?? [];
+
+  // ── Mutations ──────────────────────────────────────────────
   const deleteMut = useMutation({
     mutationFn: (id: string) => risksApi.delete(id),
     onSuccess: () => {
       toast.success('Risiko berhasil dihapus');
-      qc.invalidateQueries({ queryKey: ['risks'] });
       setDeleteTarget(null);
+      qc.invalidateQueries({ queryKey: ['risks'] });
     },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? 'Gagal menghapus risiko';
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message || 'Gagal menghapus risiko';
       toast.error(msg);
+      setDeleteTarget(null);
     },
   });
 
-  function handleFile(file: File) {
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (!['xlsx', 'xls', 'csv'].includes(ext ?? '')) {
-      toast.error('Format file harus .xlsx, .xls, atau .csv');
-      return;
+  // ── Handlers ───────────────────────────────────────────────
+  const handleFilterChange = (key: string, value: string) => {
+    setPage(1);
+    if (key === 'direktorat') { 
+      setDirektoratId(value); 
+      setDivisiId(''); // Reset divisi
     }
-    importFile.mutate(file);
-  }
+    if (key === 'divisi') setDivisiId(value);
+    if (key === 'level') setLevelInherent(value);
+    if (key === 'hos') setHosKategoriId(value);
+    if (key === 'search') setSearch(value);
+  };
 
-  function resetPage() { setPage(1); }
+  const resetFilters = () => {
+    setSearch('');
+    setDirektoratId('');
+    setDivisiId('');
+    setLevelInherent('');
+    setHosKategoriId('');
+    setPage(1);
+  };
 
-  const canEdit = ['kepala_spi', 'admin_spi', 'pengendali_teknis'].includes(user?.role ?? '');
+  const hasFilters = search || direktoratId || divisiId || levelInherent || hosKategoriId;
+  const totalPages = meta?.totalPages ?? 1;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
 
-      {/* ── Import Action Bar ────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider flex-shrink-0">
-            Impor Data Risiko
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Registri Risiko RCSA {tahun}</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {meta?.total ?? 0} risiko terdaftar · Berdasarkan Report RCSA Transjakarta
           </p>
-          <div className="flex flex-wrap gap-2">
-            {/* TRUST */}
-            <button
-              onClick={() => setImportPanel(importPanel === 'trust' ? null : 'trust')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                importPanel === 'trust'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100'
-              }`}
-            >
-              <Link2 className="w-3.5 h-3.5" />
-              Import dari TRUST
-              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-slate-300'} ${importPanel === 'trust' ? '' : ''}`} />
-            </button>
-
-            {/* File */}
-            <button
-              onClick={() => setImportPanel(importPanel === 'file' ? null : 'file')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                importPanel === 'file'
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100'
-              }`}
-            >
-              <CloudUpload className="w-3.5 h-3.5" />
-              Upload File
-            </button>
-
-            {/* Manual */}
-            {canEdit && (
-              <button
-                onClick={() => { setEditRisk(null); setFormOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-primary-200 text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Tambah Manual
-              </button>
-            )}
-          </div>
-
-          {importPanel && (
-            <button onClick={() => setImportPanel(null)} className="ml-auto text-slate-400 hover:text-slate-600">
-              <X className="w-4 h-4" />
-            </button>
-          )}
         </div>
-
-        {/* ── TRUST Panel ─── */}
-        {importPanel === 'trust' && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
-                <span className={`text-sm font-medium ${isConnected ? 'text-green-700' : 'text-slate-500'}`}>
-                  {isConnected ? 'TRUST Terhubung' : 'TRUST Tidak Terhubung'}
-                </span>
-              </div>
-              {isConnected ? (
-                <p className="text-xs text-slate-500 flex-1">
-                  Klik "Sync Sekarang" untuk menarik data risiko terbaru untuk tahun {tahun}.
-                </p>
-              ) : (
-                <p className="text-xs text-slate-500 flex-1">
-                  Koneksi TRUST belum dikonfigurasi. Hubungi IT Admin untuk setup.
-                </p>
-              )}
-              <button
-                onClick={() => importTrust.mutate()}
-                disabled={!isConnected || importTrust.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {importTrust.isPending
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
-                  : <><RefreshCw className="w-4 h-4" /> Sync Sekarang</>}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── File Upload Panel ─── */}
-        {importPanel === 'file' && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <div
-              className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-                dragOver ? 'border-orange-400 bg-orange-50' : 'border-orange-200 hover:border-orange-300 bg-orange-50/30'
-              }`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault(); setDragOver(false);
-                const file = e.dataTransfer.files[0];
-                if (file) handleFile(file);
-              }}
+        {isAdmin && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleDownloadTemplate}
+              disabled={downloadingTemplate}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all disabled:opacity-50"
             >
-              {importFile.isPending ? (
-                <div className="flex items-center justify-center gap-2 text-orange-600">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="text-sm font-medium">Memproses file...</span>
-                </div>
-              ) : (
-                <>
-                  <FileSpreadsheet className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-slate-600 mb-1">Drag & drop file di sini</p>
-                  <p className="text-xs text-slate-400 mb-3">Kolom: Risk ID, Divisi, Department, Risk Description, Level, Status</p>
-                  <button
-                    onClick={() => fileRef.current?.click()}
-                    className="px-4 py-1.5 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-                  >
-                    <Upload className="w-3.5 h-3.5 inline mr-1.5" />Browse File
-                  </button>
-                  <input
-                    ref={fileRef} type="file" className="hidden"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-                  />
-                </>
-              )}
-            </div>
+              <Download className="w-4 h-4" />
+              {downloadingTemplate ? 'Menyiapkan...' : 'Download Template'}
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
+            >
+              <Upload className="w-4 h-4" />
+              Import Excel
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+            <button
+              disabled
+              title="Integrasi TRUST — akan tersedia setelah API TRUST terhubung"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-400 cursor-not-allowed transition-all"
+            >
+              <Database className="w-4 h-4" />
+              Sinkronisasi TRUST
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-bold">SOON</span>
+            </button>
           </div>
         )}
       </div>
 
-      {/* ── Filters (Penambahan Departemen Dropdown) ─────────── */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px]">
+      {/* ── Info sumber data ─────────────────────────────────── */}
+      {isAdmin && (
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-xs text-blue-800 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-600" />
+          <div>
+            Data risiko bersumber dari <strong>TRUST</strong> (otomatis) atau <strong>Import Excel</strong>. Unduh template terlebih dahulu untuk melihat field yang dibutuhkan sebelum import.
+          </div>
+        </div>
+      )}
+
+      {/* ── Filters ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
+        {/* Search Bar */}
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
+            type="text"
+            placeholder="Cari ID Risiko atau Nama Risiko..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); resetPage(); }}
-            placeholder="Cari risk code, deskripsi..."
-            className="input pl-9 text-sm"
+            onChange={(e) => handleFilterChange('search', e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-transparent"
           />
         </div>
 
-        <select
-          value={divisi}
-          onChange={(e) => { setDivisi(e.target.value); setDepartemen(''); resetPage(); }}
-          className="input w-48 text-sm"
-        >
-          <option value="">Semua Divisi</option>
-          {(divisiList ?? []).map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
+        {/* Dropdowns */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Direktorat */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-2">Direktorat</label>
+            <select
+              value={direktoratId}
+              onChange={(e) => handleFilterChange('direktorat', e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
+            >
+              <option value="">Semua Direktorat</option>
+              {direktorats.map((d) => (
+                <option key={d.id} value={d.id}>{d.nama}</option>
+              ))}
+            </select>
+          </div>
 
-        {/* Dropdown Departemen */}
-        <select
-          value={departemen}
-          onChange={(e) => { setDepartemen(e.target.value); resetPage(); }}
-          className="input w-48 text-sm"
-        >
-          <option value="">Semua Departemen</option>
-          {deptList.map((d) => (
-            <option key={d as string} value={d as string}>{d}</option>
-          ))}
-        </select>
+          {/* Divisi */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-2">Divisi</label>
+            <select
+              value={divisiId}
+              onChange={(e) => handleFilterChange('divisi', e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
+            >
+              <option value="">Semua Divisi</option>
+              {divisi.map((d) => (
+                <option key={d.id} value={d.id}>{d.nama}</option>
+              ))}
+            </select>
+          </div>
 
-        <select
-          value={level}
-          onChange={(e) => { setLevel(e.target.value); resetPage(); }}
-          className="input w-36 text-sm"
-        >
-          <option value="">Semua Level</option>
-          {(['Critical', 'High', 'Medium', 'Low'] as RiskLevel[]).map((l) => (
-            <option key={l} value={l}>{l}</option>
-          ))}
-        </select>
+          {/* Perspektif HoS */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-2">Perspektif HoS</label>
+            <select
+              value={hosKategoriId}
+              onChange={(e) => handleFilterChange('hos', e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
+            >
+              <option value="">Semua Perspektif</option>
+              {hosKategoris.map((h) => (
+                <option key={h.id} value={h.id}>{h.kode} — {h.nama_perspektif}</option>
+              ))}
+            </select>
+          </div>
 
-        {(search || divisi || departemen || level) && (
-          <button
-            onClick={() => { setSearch(''); setDivisi(''); setDepartemen(''); setLevel(''); resetPage(); }}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <X className="w-3.5 h-3.5" /> Reset Filter
-          </button>
+          {/* Level Risiko Inherent */}
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-2">Tingkat Risiko</label>
+            <select
+              value={levelInherent}
+              onChange={(e) => handleFilterChange('level', e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
+            >
+              <option value="">Semua Level</option>
+              {levelRefs.map((lr) => (
+                <option key={lr.kode} value={lr.kode}>
+                  {lr.kode} - {lr.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Reset Button */}
+          {hasFilters && (
+            <div className="flex items-end">
+              <button
+                onClick={resetFilters}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+                Reset Filter
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Active Filter Chips */}
+        {hasFilters && (
+          <div className="flex flex-wrap gap-2 pt-2">
+            {search && (
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-50 border border-primary-200 rounded-full text-xs">
+                <span className="text-primary-700 font-medium">Cari: {search}</span>
+                <button
+                  onClick={() => handleFilterChange('search', '')}
+                  className="text-primary-500 hover:text-primary-700"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {direktoratId && (
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-xs">
+                <span className="text-blue-700 font-medium">
+                  Dir: {direktorats.find(d => d.id === direktoratId)?.nama}
+                </span>
+                <button
+                  onClick={() => handleFilterChange('direktorat', '')}
+                  className="text-blue-500 hover:text-blue-700"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {divisiId && (
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-full text-xs">
+                <span className="text-green-700 font-medium">
+                  Div: {divisi.find(d => d.id === divisiId)?.nama}
+                </span>
+                <button
+                  onClick={() => handleFilterChange('divisi', '')}
+                  className="text-green-500 hover:text-green-700"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {levelInherent && (
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-50 border border-orange-200 rounded-full text-xs">
+                <span className="text-orange-700 font-medium">Level: {levelInherent}</span>
+                <button
+                  onClick={() => handleFilterChange('level', '')}
+                  className="text-orange-500 hover:text-orange-700"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+            {hosKategoriId && (
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-full text-xs">
+                <span className="text-indigo-700 font-medium">
+                  HoS: {hosKategoris.find(h => h.id === hosKategoriId)?.kode}
+                </span>
+                <button
+                  onClick={() => handleFilterChange('hos', '')}
+                  className="text-indigo-500 hover:text-indigo-700"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {/* ── Risk Table ───────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {/* Table header */}
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-          <h3 className="font-semibold text-slate-700 text-sm">
-            Data Risiko <span className="text-slate-400 font-normal">— Tahun {tahun}</span>
-          </h3>
-          <span className="text-xs text-slate-400">
-            {total > 0
-              ? `${Math.min((page - 1) * LIMIT + 1, total)}–${Math.min(page * LIMIT, total)} dari ${total} risiko`
-              : 'Belum ada data'}
-          </span>
+      {/* ── Data Table ──────────────────────────────────────── */}
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border border-slate-300 border-t-primary-600" />
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/60">
-                <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">Risk ID</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">Tahun</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">Divisi</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">Departemen</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500">Deskripsi Risiko</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">Level Risk</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">Source</th>
-                <th className="px-4 py-3 text-center font-medium text-slate-500 whitespace-nowrap">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="border-b border-slate-50">
-                    {Array.from({ length: 9 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-3 bg-slate-100 rounded animate-pulse" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : risks.length === 0 ? (
+      ) : isError ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-red-900">Gagal memuat data risiko</p>
+            <p className="text-sm text-red-700 mt-1">Silakan coba refresh halaman atau hubungi support</p>
+          </div>
+        </div>
+      ) : risksList.length === 0 ? (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-8 text-center">
+          <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-600 font-medium">Tidak ada risiko yang ditemukan</p>
+          <p className="text-sm text-slate-500 mt-1">Coba ubah filter, atau import data dari Excel / TRUST.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <AlertCircle className="w-10 h-10 text-slate-200" />
-                      <p className="text-slate-400 text-sm">
-                        Belum ada data risiko untuk tahun {tahun}.
-                      </p>
-                      <p className="text-xs text-slate-300">
-                        Impor dari TRUST, upload file, atau tambah manual.
-                      </p>
-                    </div>
-                  </td>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">ID Risiko</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Direktorat</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Divisi</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Nama Risiko</th>
+                  <th className="px-5 py-3 text-center font-semibold text-slate-700">Tingkat Risiko</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Perspektif HoS</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Sasaran Strategis</th>
+                  <th className="px-5 py-3 text-center font-semibold text-slate-700">Aksi</th>
                 </tr>
-              ) : (
-                risks.map((risk) => (
-                  <tr
-                    key={risk.id}
-                    className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-primary-600 whitespace-nowrap">
-                      {risk.risk_code}
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {risksList.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-5 py-4 font-mono text-xs text-slate-600">{r.id_risiko}</td>
+                    <td className="px-5 py-4 text-slate-800">{r.direktorat || '—'}</td>
+                    <td className="px-5 py-4 text-slate-800">{r.divisi || '—'}</td>
+                    <td className="px-5 py-4 max-w-xs">
+                      <p className="font-medium text-slate-900 line-clamp-2">{r.nama_risiko}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-center">
-                      {risk.tahun}
+                    <td className="px-5 py-4 text-center">
+                      <RiskLevelBadge
+                        level={r.level_inherent}
+                        label={r.label_inherent}
+                        bg={r.bg_inherent}
+                        text={r.text_inherent}
+                      />
                     </td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap max-w-[140px]">
-                      <span className="truncate block">{risk.divisi || '—'}</span>
+                    <td className="px-5 py-4 text-xs">
+                      {r.hos_kategori_kode ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold">
+                          {r.hos_kategori_kode}
+                          {r.hos_kategori_nama && <span className="font-normal opacity-75 hidden lg:inline">— {r.hos_kategori_nama}</span>}
+                        </span>
+                      ) : <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap max-w-[140px]">
-                      <span className="truncate block">{risk.department_name || '—'}</span>
+                    <td className="px-5 py-4 text-xs max-w-[200px]">
+                      {r.sasaran_strategis_nama ? (
+                        <p className="text-slate-700 line-clamp-2" title={r.sasaran_strategis_nama}>
+                          {r.sasaran_strategis_kode && <span className="font-mono text-slate-500 mr-1">{r.sasaran_strategis_kode}</span>}
+                          {r.sasaran_strategis_nama}
+                        </p>
+                      ) : <span className="text-slate-300">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 max-w-xs">
-                      <span className="line-clamp-2 text-xs leading-relaxed">{risk.risk_description}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${LEVEL_BADGE[risk.risk_level]}`}>
-                        {risk.risk_level}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[risk.status]}`}>
-                        {risk.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                        risk.source === 'TRUST' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {risk.source}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
+                    <td className="px-5 py-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => setDetailRisk(risk)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                          title="Detail"
+                          onClick={() => setDetailRisk(r)}
+                          className="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
+                          title="Lihat Detail"
                         >
-                          <Eye className="w-3.5 h-3.5" />
+                          <Eye className="w-4 h-4" />
                         </button>
-                        {canEdit && (
-                          <>
-                            <button
-                              onClick={() => { setEditRisk(risk); setFormOpen(true); }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteTarget(risk)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                              title="Hapus"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
+                        {isAdmin && (
+                          <button
+                            onClick={() => setDeleteTarget(r)}
+                            className="p-1.5 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
+                            title="Hapus"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-
-        {/* Pagination */}
-        {pages > 1 && (
-          <div className="px-5 py-3 flex items-center justify-between border-t border-slate-100">
-            <span className="text-xs text-slate-400">
-              Halaman {page} dari {pages}
-            </span>
-            <div className="flex gap-1">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-                className="btn-secondary px-2.5 py-1.5 text-xs disabled:opacity-40"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              {Array.from({ length: Math.min(pages, 5) }, (_, i) => {
-                const pg = pages <= 5 ? i + 1 : Math.max(1, page - 2) + i;
-                if (pg > pages) return null;
-                return (
-                  <button
-                    key={pg}
-                    onClick={() => setPage(pg)}
-                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                      page === pg ? 'bg-primary-500 text-white' : 'btn-secondary'
-                    }`}
-                  >
-                    {pg}
-                  </button>
-                );
-              })}
-              <button
-                disabled={page >= pages}
-                onClick={() => setPage((p) => p + 1)}
-                className="btn-secondary px-2.5 py-1.5 text-xs disabled:opacity-40"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Delete Confirm ───────────────────────────────────── */}
-      {deleteTarget && (
-        <>
-          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-            <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full pointer-events-auto">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                  <Trash2 className="w-5 h-5 text-red-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-800 text-base">Hapus Risiko?</p>
-                  <p className="text-sm text-slate-500 mt-1">
-                    <span className="font-semibold text-slate-700">{deleteTarget.risk_code}</span> akan dihapus secara permanen.
-                    Risiko yang sudah digunakan dalam Program tidak dapat dihapus.
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-5">
-                <button onClick={() => setDeleteTarget(null)} className="flex-1 btn-secondary text-sm">
-                  Batal
-                </button>
-                <button
-                  onClick={() => deleteMut.mutate(deleteTarget.id)}
-                  disabled={deleteMut.isPending}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                >
-                  {deleteMut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Hapus
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
       )}
 
-      {/* ── Modals ───────────────────────────────────────────── */}
+      {/* ── Pagination ──────────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-slate-600">
+            Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong> • Total: <strong>{meta?.total}</strong> risiko
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-1.5 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const pageNum = Math.max(1, page - 2) + i;
+              if (pageNum > totalPages) return null;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    page === pageNum
+                      ? 'bg-primary-600 text-white'
+                      : 'hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-1.5 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modals ──────────────────────────────────────────── */}
+      {detailRisk && (
+        <RiskDetailModal
+          risk={detailRisk}
+          open={!!detailRisk}
+          onClose={() => setDetailRisk(null)}
+          onEdit={isAdmin ? () => {
+            setEditRisk(detailRisk);
+            setDetailRisk(null);
+            setFormOpen(true);
+          } : undefined}
+          onDelete={() => setDeleteTarget(detailRisk)}
+        />
+      )}
+
       {formOpen && (
         <RiskFormModal
           tahun={tahun}
           editData={editRisk}
           onClose={() => { setFormOpen(false); setEditRisk(null); }}
           onSuccess={() => {
-            qc.invalidateQueries({ queryKey: ['risks'] });
-            qc.invalidateQueries({ queryKey: ['divisi-list'] });
             setFormOpen(false);
             setEditRisk(null);
+            qc.invalidateQueries({ queryKey: ['risks'] });
           }}
         />
       )}
 
-      {detailRisk && (
-        <RiskDetailModal
-          risk={detailRisk}
-          onClose={() => setDetailRisk(null)}
-          onEdit={canEdit ? () => { setEditRisk(detailRisk); setDetailRisk(null); setFormOpen(true); } : undefined}
-        />
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg max-w-sm w-full p-6 space-y-4">
+            <div>
+              <p className="font-bold text-slate-900">Hapus Risiko</p>
+              <p className="text-sm text-slate-600 mt-2">
+                Anda yakin ingin menghapus risiko <strong>{deleteTarget.id_risiko}</strong>? Aksi ini tidak dapat dibatalkan.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => deleteMut.mutate(deleteTarget.id)}
+                disabled={deleteMut.isPending}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg transition-colors"
+              >
+                {deleteMut.isPending ? 'Menghapus...' : 'Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

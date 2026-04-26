@@ -1,23 +1,51 @@
-import { useState } from 'react';
-import { ChevronRight, BarChart2, FileText, Calendar, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ChevronRight, BarChart2, FileText, Calendar, Users, Award, CalendarDays, Mail } from 'lucide-react';
 import RiskTab from './components/RiskTab';
 import ProgramTab from './components/ProgramTab';
 import WorkloadTab from './components/WorkloadTab';
+import EvaluationTab from './components/EvaluationTab';
+import ManDaysTab from './components/ManDaysTab';
+import CeoLetterTab from './components/CeoLetterTab';
 
-type TabId = 'risk' | 'program' | 'workload';
+type TabId = 'ceo-letter' | 'risk' | 'mandays' | 'program' | 'workload' | 'evaluation';
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: 'risk',     label: 'Data Risiko',          icon: BarChart2 },
-  { id: 'program',  label: 'Program Kerja (PKPT)',  icon: FileText  },
-  { id: 'workload', label: 'Beban Kerja Auditor',   icon: Users     },
+  { id: 'ceo-letter', label: 'CEO Letter',           icon: Mail         },
+  { id: 'risk',       label: 'Data Risiko',          icon: BarChart2    },
+  { id: 'mandays',    label: 'Man-Days',             icon: CalendarDays },
+  { id: 'program',    label: 'Program Kerja',        icon: FileText     },
+  { id: 'workload',   label: 'Beban Kerja Auditor',  icon: Users        },
+  { id: 'evaluation', label: 'Penilaian Auditor',    icon: Award        },
 ];
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 export default function PKPTPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('risk');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const searchParamsString = searchParams.toString();
+  const storedTab = localStorage.getItem('pkpt_active_tab');
+  const isValidTab = (t: string | null): t is TabId =>
+    t === 'ceo-letter' || t === 'risk' || t === 'mandays' || t === 'program' || t === 'workload' || t === 'evaluation';
+
+  const activeTab: TabId = isValidTab(tabParam)
+    ? tabParam
+    : (isValidTab(storedTab) ? storedTab : 'risk');
   const [tahun, setTahun] = useState(CURRENT_YEAR);
   const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - 2 + i);
+
+  useEffect(() => {
+    localStorage.setItem('pkpt_active_tab', activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!isValidTab(tabParam)) {
+      const next = new URLSearchParams(searchParamsString);
+      next.set('tab', activeTab);
+      setSearchParams(next, { replace: true });
+    }
+  }, [activeTab, tabParam, searchParamsString, setSearchParams]);
 
   return (
     <div className="space-y-6">
@@ -68,7 +96,11 @@ export default function PKPTPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.set('tab', tab.id);
+                  setSearchParams(next, { replace: true });
+                }}
                 className={`group relative flex items-center gap-2.5 pb-3.5 px-1 border-b-2 text-sm font-bold transition-all duration-200 ${
                   isActive
                     ? 'border-primary-600 text-primary-700'
@@ -91,9 +123,12 @@ export default function PKPTPage() {
 
       {/* ── Konten Tab ── */}
       <div className="transition-all duration-300 ease-in-out">
-        {activeTab === 'risk'     && <RiskTab     tahun={tahun} />}
-        {activeTab === 'program'  && <ProgramTab  tahun={tahun} />}
-        {activeTab === 'workload' && <WorkloadTab tahun={tahun} />}
+        {activeTab === 'ceo-letter' && <CeoLetterTab  tahun={tahun} />}
+        {activeTab === 'risk'       && <RiskTab       tahun={tahun} />}
+        {activeTab === 'mandays'    && <ManDaysTab    tahun={tahun} />}
+        {activeTab === 'program'    && <ProgramTab    tahun={tahun} />}
+        {activeTab === 'workload'   && <WorkloadTab   tahun={tahun} />}
+        {activeTab === 'evaluation' && <EvaluationTab tahun={tahun} />}
       </div>
       
     </div>
