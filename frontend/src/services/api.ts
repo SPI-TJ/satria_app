@@ -98,14 +98,15 @@ export interface CreatePlanPayload {
   deskripsi?: string;
   tanggal_mulai: string;
   tanggal_selesai: string;
-  // Finansial & tipe penugasan (Fase 5)
-  tipe_penugasan_id?: string | null;
+  // Finansial (Fase 5)
   anggaran?: number | null;
   realisasi_anggaran?: number | null;
-  kategori_anggaran?: 'Subsidi' | 'Non Subsidi' | null;
+  kategori_anggaran?: string | null;
   man_days_estimasi?: number | null;
   pengendali_teknis_id?: string;
+  pengendali_teknis_ids?: string[];
   ketua_tim_id?: string;
+  ketua_tim_ids?: string[];
   anggota_ids?: string[];
   team_alokasi?: Record<string, number>;  // user_id -> hari_alokasi
   risk_ids?: string[];
@@ -144,6 +145,7 @@ export const workloadApi = {
     tanggal_mulai: string;
     tanggal_selesai: string;
     role_tim: string;
+    hari_alokasi?: number;
   }) => api.post<SimulateWorkloadResponse>('/workload/simulate', payload),
 };
 
@@ -346,13 +348,10 @@ export interface BobotPeran {
   keterangan: string | null;
 }
 
-export interface TipePenugasan {
+export interface KelompokPenugasan {
   id: string;
-  kategori_program: string;
-  kode: string;
-  nama: string;
-  deskripsi: string | null;
-  default_hari: number | null;
+  tipe: string;     // 'Kategori' | 'Sifat Program' | 'Kategori Anggaran' | (custom)
+  nilai: string;
   urutan: number;
   is_active: boolean;
 }
@@ -384,15 +383,15 @@ export const settingsApi = {
   upsertBobotPeran: (tahun: number, items: Partial<BobotPeran>[]) =>
     api.put<ApiResponse<BobotPeran[]>>('/settings/bobot-peran', { tahun, items }),
 
-  // Tipe Penugasan
-  getTipePenugasan: (kategori_program?: string) =>
-    api.get<ApiResponse<TipePenugasan[]>>('/settings/tipe-penugasan', { params: { kategori_program } }),
-  createTipePenugasan: (data: Partial<TipePenugasan>) =>
-    api.post<ApiResponse<TipePenugasan>>('/settings/tipe-penugasan', data),
-  updateTipePenugasan: (id: string, data: Partial<TipePenugasan>) =>
-    api.patch<ApiResponse<TipePenugasan>>(`/settings/tipe-penugasan/${id}`, data),
-  deleteTipePenugasan: (id: string) =>
-    api.delete<ApiResponse<null>>(`/settings/tipe-penugasan/${id}`),
+  // Kelompok Penugasan (master generik: Kategori / Sifat Program / Kategori Anggaran / dll)
+  getKelompokPenugasan: (tipe?: string) =>
+    api.get<ApiResponse<KelompokPenugasan[]>>('/settings/kelompok-penugasan', { params: { tipe } }),
+  createKelompokPenugasan: (data: Partial<KelompokPenugasan>) =>
+    api.post<ApiResponse<KelompokPenugasan>>('/settings/kelompok-penugasan', data),
+  updateKelompokPenugasan: (id: string, data: Partial<KelompokPenugasan>) =>
+    api.patch<ApiResponse<KelompokPenugasan>>(`/settings/kelompok-penugasan/${id}`, data),
+  deleteKelompokPenugasan: (id: string) =>
+    api.delete<ApiResponse<null>>(`/settings/kelompok-penugasan/${id}`),
 };
 
 // ── User Management (Admin SPI) ───────────────────────────────

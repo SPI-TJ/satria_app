@@ -61,7 +61,7 @@ export async function getAnnualPlans(req: Request, res: Response) {
       `SELECT
           a.id,
           EXTRACT(YEAR FROM a.tahun_perencanaan)::INT  AS tahun,
-          a.tahun_perencanaan,
+          TO_CHAR(a.tahun_perencanaan, 'YYYY-MM-DD') AS tahun_perencanaan,
           a.jenis_program,
           a.kategori_program,
           a.judul_program,
@@ -69,15 +69,12 @@ export async function getAnnualPlans(req: Request, res: Response) {
           a.status_pkpt,
           a.auditee,
           a.estimasi_hari,
-          a.tanggal_mulai,
-          a.tanggal_selesai,
+          TO_CHAR(a.tanggal_mulai,   'YYYY-MM-DD') AS tanggal_mulai,
+          TO_CHAR(a.tanggal_selesai, 'YYYY-MM-DD') AS tanggal_selesai,
           a.completed_at,
           a.deskripsi,
           a.created_at,
-          -- Finansial & tipe penugasan (Fase 5)
-          a.tipe_penugasan_id,
-          tp.kode      AS tipe_penugasan_kode,
-          tp.nama      AS tipe_penugasan_nama,
+          -- Finansial (Fase 5)
           a.anggaran,
           a.realisasi_anggaran,
           a.kategori_anggaran,
@@ -111,11 +108,10 @@ export async function getAnnualPlans(req: Request, res: Response) {
             LIMIT 1
           ) AS pengendali_teknis_id,
           (
-            SELECT u2.nama_lengkap
+            SELECT STRING_AGG(u2.nama_lengkap, ', ' ORDER BY u2.nama_lengkap)
             FROM pkpt.annual_plan_team t
             JOIN auth.users u2 ON u2.id = t.user_id
             WHERE t.annual_plan_id = a.id AND t.role_tim = 'Ketua Tim'
-            LIMIT 1
           ) AS ketua_nama,
           (
             SELECT u2.id
@@ -137,7 +133,6 @@ export async function getAnnualPlans(req: Request, res: Response) {
             WHERE r.annual_plan_id = a.id
           )::INT AS jumlah_risiko
        FROM pkpt.annual_audit_plans a
-       LEFT JOIN master.tipe_penugasan tp ON tp.id = a.tipe_penugasan_id
        LEFT JOIN pkpt.v_program_finansial vf ON vf.plan_id = a.id
        WHERE ${where}
        ORDER BY a.tahun_perencanaan DESC, a.created_at DESC
@@ -170,12 +165,13 @@ export async function getAnnualPlanById(req: Request, res: Response) {
     const result = await query(
       `SELECT a.*,
               EXTRACT(YEAR FROM a.tahun_perencanaan)::INT AS tahun,
-              tp.kode AS tipe_penugasan_kode,
-              tp.nama AS tipe_penugasan_nama,
+              -- Override kolom DATE jadi string ISO supaya tidak terkena timezone shift di pg-driver
+              TO_CHAR(a.tahun_perencanaan, 'YYYY-MM-DD') AS tahun_perencanaan,
+              TO_CHAR(a.tanggal_mulai,     'YYYY-MM-DD') AS tanggal_mulai,
+              TO_CHAR(a.tanggal_selesai,   'YYYY-MM-DD') AS tanggal_selesai,
               vf.man_days_terpakai,
               vf.persen_pagu_terpakai
        FROM pkpt.annual_audit_plans a
-       LEFT JOIN master.tipe_penugasan tp ON tp.id = a.tipe_penugasan_id
        LEFT JOIN pkpt.v_program_finansial vf ON vf.plan_id = a.id
        WHERE a.id = $1 AND a.deleted_at IS NULL`,
       [id],
@@ -288,15 +284,16 @@ export async function createAnnualPlan(req: Request, res: Response) {
       deskripsi,
       tanggal_mulai,
       tanggal_selesai,
-      // Finansial & tipe penugasan (Fase 5)
-      tipe_penugasan_id,
+      // Finansial (Fase 5)
       anggaran,
       realisasi_anggaran,
       kategori_anggaran,
       man_days_estimasi,
       // SDM
       pengendali_teknis_id,
+      pengendali_teknis_ids,
       ketua_tim_id,
+      ketua_tim_ids,
       anggota_ids,
       // Alokasi hari per anggota (key = user_id, value = hari_alokasi)
       team_alokasi,
@@ -322,9 +319,9 @@ export async function createAnnualPlan(req: Request, res: Response) {
          (tahun_perencanaan, jenis_program, kategori_program, judul_program,
           status_program, auditee, deskripsi, estimasi_hari,
           tanggal_mulai, tanggal_selesai, status_pkpt,
-          tipe_penugasan_id, anggaran, realisasi_anggaran, kategori_anggaran, man_days_estimasi,
+          anggaran, realisasi_anggaran, kategori_anggaran, man_days_estimasi,
           created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Open',$11,$12,$13,$14,$15,$16)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Open',$11,$12,$13,$14,$15)
        RETURNING id`,
       [
         tahunStr,
@@ -337,7 +334,6 @@ export async function createAnnualPlan(req: Request, res: Response) {
         estimasi_hari,
         tanggal_mulai,
         tanggal_selesai,
-        tipe_penugasan_id || null,
         anggaran ?? null,
         realisasi_anggaran ?? null,
         kategori_anggaran || null,
@@ -347,6 +343,12 @@ export async function createAnnualPlan(req: Request, res: Response) {
     );
 
     const planId = result.rows[0].id;
+    const ketuaIds: string[] = Array.isArray(ketua_tim_ids)
+      ? ketua_tim_ids
+      : (ketua_tim_id ? [ketua_tim_id] : []);
+    const ptIds: string[] = Array.isArray(pengendali_teknis_ids)
+      ? pengendali_teknis_ids
+      : (pengendali_teknis_id ? [pengendali_teknis_id] : []);
 
     // ── Masukkan tim auditor (dengan hari_alokasi opsional) ─
     const alokasiOf = (uid: string): number | null => {
@@ -356,18 +358,18 @@ export async function createAnnualPlan(req: Request, res: Response) {
       return Number.isFinite(n) && n >= 0 ? n : null;
     };
 
-    if (pengendali_teknis_id) {
+    for (const uid of ptIds) {
       await query(
         `INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
          VALUES ($1,$2,'Pengendali Teknis',$3) ON CONFLICT (annual_plan_id, user_id) DO NOTHING`,
-        [planId, pengendali_teknis_id, alokasiOf(pengendali_teknis_id)],
+        [planId, uid, alokasiOf(uid)],
       );
     }
-    if (ketua_tim_id) {
+    for (const uid of ketuaIds) {
       await query(
         `INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
          VALUES ($1,$2,'Ketua Tim',$3) ON CONFLICT (annual_plan_id, user_id) DO NOTHING`,
-        [planId, ketua_tim_id, alokasiOf(ketua_tim_id)],
+        [planId, uid, alokasiOf(uid)],
       );
     }
     if (Array.isArray(anggota_ids)) {
@@ -416,8 +418,8 @@ export async function updateAnnualPlan(req: Request, res: Response) {
       jenis_program, kategori_program, judul_program,
       status_program, auditee, deskripsi,
       tanggal_mulai, tanggal_selesai,
-      tipe_penugasan_id, anggaran, realisasi_anggaran, kategori_anggaran, man_days_estimasi,
-      pengendali_teknis_id, ketua_tim_id, anggota_ids,
+      anggaran, realisasi_anggaran, kategori_anggaran, man_days_estimasi,
+      pengendali_teknis_id, pengendali_teknis_ids, ketua_tim_id, ketua_tim_ids, anggota_ids,
       team_alokasi,
       risk_ids,
     } = req.body;
@@ -449,20 +451,18 @@ export async function updateAnnualPlan(req: Request, res: Response) {
          tanggal_mulai       = COALESCE($7, tanggal_mulai),
          tanggal_selesai     = COALESCE($8, tanggal_selesai),
          estimasi_hari       = $9,
-         tipe_penugasan_id   = COALESCE($10, tipe_penugasan_id),
-         anggaran            = COALESCE($11, anggaran),
-         realisasi_anggaran  = COALESCE($12, realisasi_anggaran),
-         kategori_anggaran   = COALESCE($13, kategori_anggaran),
-         man_days_estimasi   = COALESCE($14, man_days_estimasi),
-         updated_by          = $15,
+         anggaran            = COALESCE($10, anggaran),
+         realisasi_anggaran  = COALESCE($11, realisasi_anggaran),
+         kategori_anggaran   = COALESCE($12, kategori_anggaran),
+         man_days_estimasi   = COALESCE($13, man_days_estimasi),
+         updated_by          = $14,
          updated_at          = NOW()
-       WHERE id = $16 AND deleted_at IS NULL`,
+       WHERE id = $15 AND deleted_at IS NULL`,
       [
         jenis_program, kategori_program, judul_program,
         status_program, auditee, deskripsi,
         tanggal_mulai, tanggal_selesai,
         estimasi_hari,
-        tipe_penugasan_id ?? null,
         anggaran ?? null,
         realisasi_anggaran ?? null,
         kategori_anggaran ?? null,
@@ -472,6 +472,13 @@ export async function updateAnnualPlan(req: Request, res: Response) {
     );
 
     // ── Update tim: hard-delete dulu supaya tidak konflik UNIQUE ─
+    const ketuaIdsUpd: string[] = Array.isArray(ketua_tim_ids)
+      ? ketua_tim_ids
+      : (ketua_tim_id ? [ketua_tim_id] : []);
+    const ptIdsUpd: string[] = Array.isArray(pengendali_teknis_ids)
+      ? pengendali_teknis_ids
+      : (pengendali_teknis_id ? [pengendali_teknis_id] : []);
+
     const alokasiOfUpd = (uid: string): number | null => {
       const v = team_alokasi?.[uid];
       if (v === null || v === undefined || v === '') return null;
@@ -481,22 +488,24 @@ export async function updateAnnualPlan(req: Request, res: Response) {
 
     if (
       pengendali_teknis_id !== undefined ||
+      pengendali_teknis_ids !== undefined ||
       ketua_tim_id !== undefined ||
+      ketua_tim_ids !== undefined ||
       anggota_ids !== undefined
     ) {
       await query(`DELETE FROM pkpt.annual_plan_team WHERE annual_plan_id = $1`, [id]);
-      if (pengendali_teknis_id) {
+      for (const uid of ptIdsUpd) {
         await query(
           `INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
            VALUES ($1,$2,'Pengendali Teknis',$3)`,
-          [id, pengendali_teknis_id, alokasiOfUpd(pengendali_teknis_id)],
+          [id, uid, alokasiOfUpd(uid)],
         );
       }
-      if (ketua_tim_id) {
+      for (const uid of ketuaIdsUpd) {
         await query(
           `INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
            VALUES ($1,$2,'Ketua Tim',$3)`,
-          [id, ketua_tim_id, alokasiOfUpd(ketua_tim_id)],
+          [id, uid, alokasiOfUpd(uid)],
         );
       }
       if (Array.isArray(anggota_ids)) {

@@ -102,7 +102,7 @@ export default function ManDaysTab({ tahun }: { tahun: number }) {
   return (
     <div className="space-y-5">
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         <SummaryCard label="Total Hari" value={totalHari} suffix="hari" color="slate" />
         <SummaryCard label="Total Libur" value={totalLibur} suffix="hari" color="amber" />
         <SummaryCard label="Hari Efektif" value={totalEfektif} suffix="hari" color="green" />
@@ -130,7 +130,8 @@ export default function ManDaysTab({ tahun }: { tahun: number }) {
 
       {/* Tabel 12 bulan */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+       <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-sm">
           <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
             <tr>
               <th className="px-4 py-3 text-left">Bulan</th>
@@ -186,6 +187,7 @@ export default function ManDaysTab({ tahun }: { tahun: number }) {
             </tr>
           </tfoot>
         </table>
+       </div>
       </div>
 
       {/* Actions */}

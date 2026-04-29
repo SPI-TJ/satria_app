@@ -244,7 +244,7 @@ export default function RiskFormModal({ tahun, editData, onClose, onSuccess }: P
         <div className="bg-slate-50 rounded-[20px] shadow-2xl w-full max-w-3xl pointer-events-auto flex flex-col max-h-[95vh]">
 
           {/* ── Header ── */}
-          <div className="px-8 py-5 border-b border-slate-200 bg-white rounded-t-[20px] flex items-center justify-between flex-shrink-0 z-10">
+          <div className="px-4 sm:px-8 py-5 border-b border-slate-200 bg-white rounded-t-[20px] flex items-center justify-between flex-shrink-0 z-10">
             <div>
               <h2 className="font-bold text-slate-800 text-xl">
                 {isEdit ? 'Edit Data Risiko' : 'Tambah Risiko Baru'}
@@ -259,7 +259,7 @@ export default function RiskFormModal({ tahun, editData, onClose, onSuccess }: P
           </div>
 
           {/* ── Body (Card Layout + Vertical Stack) ── */}
-          <div className="p-6 overflow-y-auto space-y-5 custom-scrollbar">
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 custom-scrollbar">
 
             {/* 1. Identifikasi Dasar */}
             <Card title="Identifikasi Dasar" icon={Fingerprint}>
@@ -422,7 +422,7 @@ export default function RiskFormModal({ tahun, editData, onClose, onSuccess }: P
           </div>
 
           {/* ── Footer ── */}
-          <div className="px-8 py-5 border-t border-slate-200 flex items-center justify-between flex-shrink-0 bg-white rounded-b-[20px] z-10">
+          <div className="px-4 sm:px-8 py-5 border-t border-slate-200 flex items-center justify-between flex-shrink-0 bg-white rounded-b-[20px] z-10">
             <div className="flex-1">
               {!isValid && form.nama_risiko === '' && (
                 <div className="flex items-center gap-1.5 text-sm text-red-500 font-medium">

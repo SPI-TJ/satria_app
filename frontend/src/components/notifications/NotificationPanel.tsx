@@ -82,25 +82,26 @@ export default function NotificationPanel() {
   return (
     <div
       ref={panelRef}
-      className="absolute right-0 top-14 z-50 w-[420px] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden"
+      className="absolute right-0 top-14 z-50 w-[calc(100vw-2rem)] sm:w-[420px] max-w-[420px] bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary-50 rounded-xl">
+      <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-slate-100 gap-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2 bg-primary-50 rounded-xl flex-shrink-0">
             <Bell className="w-5 h-5 text-primary-500" />
           </div>
-          <div>
-            <p className="font-semibold text-slate-800">Notifications</p>
-            <p className="text-xs text-slate-400">{unreadCount} unread notifications</p>
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-800 truncate">Notifications</p>
+            <p className="text-xs text-slate-400 truncate">{unreadCount} unread notifications</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={handleMarkAll}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-600 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-600 border border-slate-200 rounded-lg px-2 sm:px-3 py-1.5 transition-colors"
+            title="Mark all as read"
           >
-            <Check className="w-3.5 h-3.5" /> Mark all as read
+            <Check className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Mark all as read</span>
           </button>
           <button onClick={closePanel} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
             <X className="w-4 h-4 text-slate-400" />

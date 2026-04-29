@@ -122,7 +122,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
 
       {/* ═══ 1. Hero Banner ═══ */}
       <div className="relative bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-200 overflow-hidden">

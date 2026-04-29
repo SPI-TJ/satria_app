@@ -26,7 +26,7 @@ function calcEstimasiHari(mulai, selesai) {
 // ── GET /api/annual-plans ─────────────────────────────────────
 async function getAnnualPlans(req, res) {
     try {
-        const { status_pkpt, jenis_program, kategori_program, status_program, tahun, page = '1', limit = '20' } = req.query;
+        const { status_pkpt, jenis_program, kategori_program, status_program, kategori_anggaran, tahun, bulan, search, page = '1', limit = '20' } = req.query;
         const offset = (Number(page) - 1) * Number(limit);
         const params = [];
         const conditions = ['a.deleted_at IS NULL'];
@@ -49,6 +49,19 @@ async function getAnnualPlans(req, res) {
         if (status_program) {
             params.push(status_program);
             conditions.push(`a.status_program = $${params.length}`);
+        }
+        if (kategori_anggaran) {
+            params.push(kategori_anggaran);
+            conditions.push(`a.kategori_anggaran = $${params.length}`);
+        }
+        if (bulan) {
+            params.push(bulan);
+            // Bulan jatuh dalam rentang tanggal_mulai..tanggal_selesai
+            conditions.push(`$${params.length}::INT BETWEEN EXTRACT(MONTH FROM a.tanggal_mulai)::INT AND EXTRACT(MONTH FROM a.tanggal_selesai)::INT`);
+        }
+        if (search) {
+            params.push(`%${search}%`);
+            conditions.push(`(a.judul_program ILIKE $${params.length} OR a.auditee ILIKE $${params.length})`);
         }
         // Scope access: SPI leaders (kepala_spi, admin_spi) lihat semua.
         // Auditor lain (pengendali_teknis, anggota_tim) hanya program di mana dia terlibat.
@@ -78,6 +91,13 @@ async function getAnnualPlans(req, res) {
           a.completed_at,
           a.deskripsi,
           a.created_at,
+          -- Finansial (Fase 5)
+          a.anggaran,
+          a.realisasi_anggaran,
+          a.kategori_anggaran,
+          a.man_days_estimasi,
+          vf.man_days_terpakai,
+          vf.persen_pagu_terpakai,
           -- Tim aggregates
           (
             SELECT COUNT(*)
@@ -105,11 +125,10 @@ async function getAnnualPlans(req, res) {
             LIMIT 1
           ) AS pengendali_teknis_id,
           (
-            SELECT u2.nama_lengkap
+            SELECT STRING_AGG(u2.nama_lengkap, ', ' ORDER BY u2.nama_lengkap)
             FROM pkpt.annual_plan_team t
             JOIN auth.users u2 ON u2.id = t.user_id
             WHERE t.annual_plan_id = a.id AND t.role_tim = 'Ketua Tim'
-            LIMIT 1
           ) AS ketua_nama,
           (
             SELECT u2.id
@@ -131,6 +150,7 @@ async function getAnnualPlans(req, res) {
             WHERE r.annual_plan_id = a.id
           )::INT AS jumlah_risiko
        FROM pkpt.annual_audit_plans a
+       LEFT JOIN pkpt.v_program_finansial vf ON vf.plan_id = a.id
        WHERE ${where}
        ORDER BY a.tahun_perencanaan DESC, a.created_at DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
@@ -156,8 +176,11 @@ async function getAnnualPlanById(req, res) {
     try {
         const { id } = req.params;
         const result = await (0, database_1.query)(`SELECT a.*,
-              EXTRACT(YEAR FROM a.tahun_perencanaan)::INT AS tahun
+              EXTRACT(YEAR FROM a.tahun_perencanaan)::INT AS tahun,
+              vf.man_days_terpakai,
+              vf.persen_pagu_terpakai
        FROM pkpt.annual_audit_plans a
+       LEFT JOIN pkpt.v_program_finansial vf ON vf.plan_id = a.id
        WHERE a.id = $1 AND a.deleted_at IS NULL`, [id]);
         if (!result.rows[0]) {
             return res.status(404).json({ success: false, message: 'Program tidak ditemukan.' });
@@ -213,7 +236,8 @@ async function getAnnualPlanById(req, res) {
          AND rd.deleted_at IS NULL
        ORDER BY apr.prioritas NULLS LAST`, [id]);
         // Tim
-        const team = await (0, database_1.query)(`SELECT t.id, t.role_tim, u.id AS user_id, u.nama_lengkap, u.role, u.jabatan
+        const team = await (0, database_1.query)(`SELECT t.id, t.role_tim, t.hari_alokasi,
+              u.id AS user_id, u.nama_lengkap, u.role, u.jabatan
        FROM pkpt.annual_plan_team t
        JOIN auth.users u ON u.id = t.user_id
        WHERE t.annual_plan_id = $1
@@ -244,8 +268,12 @@ async function getAnnualPlanById(req, res) {
 async function createAnnualPlan(req, res) {
     try {
         const { tahun_perencanaan, jenis_program, kategori_program, judul_program, status_program, auditee, deskripsi, tanggal_mulai, tanggal_selesai, 
+        // Finansial (Fase 5)
+        anggaran, realisasi_anggaran, kategori_anggaran, man_days_estimasi, 
         // SDM
-        pengendali_teknis_id, ketua_tim_id, anggota_ids, 
+        pengendali_teknis_id, ketua_tim_id, ketua_tim_ids, anggota_ids, 
+        // Alokasi hari per anggota (key = user_id, value = hari_alokasi)
+        team_alokasi, 
         // Risiko (hanya untuk PKPT)
         risk_ids, } = req.body;
         if (!judul_program || !jenis_program || !tanggal_mulai || !tanggal_selesai) {
@@ -261,8 +289,10 @@ async function createAnnualPlan(req, res) {
         const result = await (0, database_1.query)(`INSERT INTO pkpt.annual_audit_plans
          (tahun_perencanaan, jenis_program, kategori_program, judul_program,
           status_program, auditee, deskripsi, estimasi_hari,
-          tanggal_mulai, tanggal_selesai, status_pkpt, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Open',$11)
+          tanggal_mulai, tanggal_selesai, status_pkpt,
+          anggaran, realisasi_anggaran, kategori_anggaran, man_days_estimasi,
+          created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Open',$11,$12,$13,$14,$15)
        RETURNING id`, [
             tahunStr,
             jenis_program,
@@ -274,22 +304,36 @@ async function createAnnualPlan(req, res) {
             estimasi_hari,
             tanggal_mulai,
             tanggal_selesai,
+            anggaran ?? null,
+            realisasi_anggaran ?? null,
+            kategori_anggaran || null,
+            man_days_estimasi ?? null,
             req.user.id,
         ]);
         const planId = result.rows[0].id;
-        // ── Masukkan tim auditor ────────────────────────────────
+        const ketuaIds = Array.isArray(ketua_tim_ids)
+            ? ketua_tim_ids
+            : (ketua_tim_id ? [ketua_tim_id] : []);
+        // ── Masukkan tim auditor (dengan hari_alokasi opsional) ─
+        const alokasiOf = (uid) => {
+            const v = team_alokasi?.[uid];
+            if (v === null || v === undefined || v === '')
+                return null;
+            const n = Number(v);
+            return Number.isFinite(n) && n >= 0 ? n : null;
+        };
         if (pengendali_teknis_id) {
-            await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim)
-         VALUES ($1,$2,'Pengendali Teknis') ON CONFLICT (annual_plan_id, user_id) DO NOTHING`, [planId, pengendali_teknis_id]);
+            await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
+         VALUES ($1,$2,'Pengendali Teknis',$3) ON CONFLICT (annual_plan_id, user_id) DO NOTHING`, [planId, pengendali_teknis_id, alokasiOf(pengendali_teknis_id)]);
         }
-        if (ketua_tim_id) {
-            await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim)
-         VALUES ($1,$2,'Ketua Tim') ON CONFLICT (annual_plan_id, user_id) DO NOTHING`, [planId, ketua_tim_id]);
+        for (const uid of ketuaIds) {
+            await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
+         VALUES ($1,$2,'Ketua Tim',$3) ON CONFLICT (annual_plan_id, user_id) DO NOTHING`, [planId, uid, alokasiOf(uid)]);
         }
         if (Array.isArray(anggota_ids)) {
             for (const uid of anggota_ids) {
-                await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim)
-           VALUES ($1,$2,'Anggota Tim') ON CONFLICT (annual_plan_id, user_id) DO NOTHING`, [planId, uid]);
+                await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
+           VALUES ($1,$2,'Anggota Tim',$3) ON CONFLICT (annual_plan_id, user_id) DO NOTHING`, [planId, uid, alokasiOf(uid)]);
             }
         }
         // ── Hubungkan risiko (khusus PKPT) ──────────────────────
@@ -317,7 +361,7 @@ async function createAnnualPlan(req, res) {
 async function updateAnnualPlan(req, res) {
     try {
         const { id } = req.params;
-        const { jenis_program, kategori_program, judul_program, status_program, auditee, deskripsi, tanggal_mulai, tanggal_selesai, pengendali_teknis_id, ketua_tim_id, anggota_ids, risk_ids, } = req.body;
+        const { jenis_program, kategori_program, judul_program, status_program, auditee, deskripsi, tanggal_mulai, tanggal_selesai, anggaran, realisasi_anggaran, kategori_anggaran, man_days_estimasi, pengendali_teknis_id, ketua_tim_id, ketua_tim_ids, anggota_ids, team_alokasi, risk_ids, } = req.body;
         const existing = await (0, database_1.query)(`SELECT id, status_pkpt, tanggal_mulai, tanggal_selesai
        FROM pkpt.annual_audit_plans WHERE id = $1 AND deleted_at IS NULL`, [id]);
         if (!existing.rows[0]) {
@@ -330,40 +374,60 @@ async function updateAnnualPlan(req, res) {
         const newSelesai = tanggal_selesai || existing.rows[0].tanggal_selesai;
         const estimasi_hari = calcEstimasiHari(newMulai, newSelesai);
         await (0, database_1.query)(`UPDATE pkpt.annual_audit_plans SET
-         jenis_program    = COALESCE($1, jenis_program),
-         kategori_program = COALESCE($2, kategori_program),
-         judul_program    = COALESCE($3, judul_program),
-         status_program   = COALESCE($4, status_program),
-         auditee          = COALESCE($5, auditee),
-         deskripsi        = COALESCE($6, deskripsi),
-         tanggal_mulai    = COALESCE($7, tanggal_mulai),
-         tanggal_selesai  = COALESCE($8, tanggal_selesai),
-         estimasi_hari    = $9,
-         updated_by       = $10,
-         updated_at       = NOW()
-       WHERE id = $11 AND deleted_at IS NULL`, [
+         jenis_program       = COALESCE($1, jenis_program),
+         kategori_program    = COALESCE($2, kategori_program),
+         judul_program       = COALESCE($3, judul_program),
+         status_program      = COALESCE($4, status_program),
+         auditee             = COALESCE($5, auditee),
+         deskripsi           = COALESCE($6, deskripsi),
+         tanggal_mulai       = COALESCE($7, tanggal_mulai),
+         tanggal_selesai     = COALESCE($8, tanggal_selesai),
+         estimasi_hari       = $9,
+         anggaran            = COALESCE($10, anggaran),
+         realisasi_anggaran  = COALESCE($11, realisasi_anggaran),
+         kategori_anggaran   = COALESCE($12, kategori_anggaran),
+         man_days_estimasi   = COALESCE($13, man_days_estimasi),
+         updated_by          = $14,
+         updated_at          = NOW()
+       WHERE id = $15 AND deleted_at IS NULL`, [
             jenis_program, kategori_program, judul_program,
             status_program, auditee, deskripsi,
             tanggal_mulai, tanggal_selesai,
-            estimasi_hari, req.user.id, id,
+            estimasi_hari,
+            anggaran ?? null,
+            realisasi_anggaran ?? null,
+            kategori_anggaran ?? null,
+            man_days_estimasi ?? null,
+            req.user.id, id,
         ]);
         // ── Update tim: hard-delete dulu supaya tidak konflik UNIQUE ─
+        const ketuaIdsUpd = Array.isArray(ketua_tim_ids)
+            ? ketua_tim_ids
+            : (ketua_tim_id ? [ketua_tim_id] : []);
+        const alokasiOfUpd = (uid) => {
+            const v = team_alokasi?.[uid];
+            if (v === null || v === undefined || v === '')
+                return null;
+            const n = Number(v);
+            return Number.isFinite(n) && n >= 0 ? n : null;
+        };
         if (pengendali_teknis_id !== undefined ||
             ketua_tim_id !== undefined ||
+            ketua_tim_ids !== undefined ||
             anggota_ids !== undefined) {
             await (0, database_1.query)(`DELETE FROM pkpt.annual_plan_team WHERE annual_plan_id = $1`, [id]);
             if (pengendali_teknis_id) {
-                await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim)
-           VALUES ($1,$2,'Pengendali Teknis')`, [id, pengendali_teknis_id]);
+                await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
+           VALUES ($1,$2,'Pengendali Teknis',$3)`, [id, pengendali_teknis_id, alokasiOfUpd(pengendali_teknis_id)]);
             }
-            if (ketua_tim_id) {
-                await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim)
-           VALUES ($1,$2,'Ketua Tim')`, [id, ketua_tim_id]);
+            for (const uid of ketuaIdsUpd) {
+                await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
+           VALUES ($1,$2,'Ketua Tim',$3)`, [id, uid, alokasiOfUpd(uid)]);
             }
             if (Array.isArray(anggota_ids)) {
                 for (const uid of anggota_ids) {
-                    await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim)
-             VALUES ($1,$2,'Anggota Tim')`, [id, uid]);
+                    await (0, database_1.query)(`INSERT INTO pkpt.annual_plan_team (annual_plan_id, user_id, role_tim, hari_alokasi)
+             VALUES ($1,$2,'Anggota Tim',$3)`, [id, uid, alokasiOfUpd(uid)]);
                 }
             }
         }

@@ -117,8 +117,9 @@ export interface RiskLevelRef {
 // ── Annual Audit Plans ────────────────────────────────────────
 export type StatusPKPT      = 'Open' | 'On Progress' | 'Closed';
 export type JenisProgram    = 'PKPT' | 'Non PKPT';
-export type KategoriProgram = 'Assurance' | 'Non Assurance' | 'Pemantauan Risiko' | 'Evaluasi';
-export type StatusProgram   = 'Mandatory' | 'Strategis' | 'Emerging Risk';
+// Free text — daftar nilai dikelola di master.kelompok_penugasan.
+export type KategoriProgram = string;
+export type StatusProgram   = string;
 
 export interface AnnualAuditPlan {
   id: string;
@@ -146,13 +147,10 @@ export interface AnnualAuditPlan {
   anggota_names?: string;
   // Risiko
   jumlah_risiko?: number;
-  // Finansial & tipe penugasan (Fase 5)
-  tipe_penugasan_id?: string | null;
-  tipe_penugasan_kode?: string | null;
-  tipe_penugasan_nama?: string | null;
+  // Finansial (Fase 5)
   anggaran?: number | null;
   realisasi_anggaran?: number | null;
-  kategori_anggaran?: 'Subsidi' | 'Non Subsidi' | null;
+  kategori_anggaran?: string | null;
   man_days_estimasi?: number | null;
   man_days_terpakai?: number | null;
   persen_pagu_terpakai?: number | null;
@@ -164,7 +162,7 @@ export interface ProgramTeamMember {
   nama_lengkap: string;
   role: UserRole;
   jabatan?: string;
-  role_tim: 'Penanggung Jawab' | 'Pengendali Teknis' | 'Ketua Tim' | 'Anggota Tim';
+  role_tim: 'Penanggung Jawab' | 'Kepala SPI' | 'Pengendali Teknis' | 'Ketua Tim' | 'Anggota Tim';
   hari_alokasi?: number | null;     // hari kerja aktual untuk anggota ini (null = pakai estimasi_hari)
 }
 
@@ -234,10 +232,12 @@ export interface WorkloadProgram {
   judul_program: string;
   jenis_program: JenisProgram;
   status_pkpt: StatusPKPT;
-  role_tim: 'Penanggung Jawab' | 'Pengendali Teknis' | 'Ketua Tim' | 'Anggota Tim';
+  role_tim: 'Penanggung Jawab' | 'Kepala SPI' | 'Pengendali Teknis' | 'Ketua Tim' | 'Anggota Tim';
   tanggal_mulai: string;
   tanggal_selesai: string;
   bobot: number;
+  hari_alokasi?: number;
+  mandays?: number;     // hari × bobot
 }
 
 export interface WorkloadAuditor {
@@ -246,19 +246,31 @@ export interface WorkloadAuditor {
   nama_lengkap: string;
   role: UserRole;
   jabatan: string | null;
-  monthly_load: Record<string, number>; // "1" .. "12" → load value
+  /** "1".."12" → utilisasi (ratio 0..N, 1.0 = 100% kapasitas hari efektif) */
+  monthly_load: Record<string, number>;
+  /** "1".."12" → absolute man-days alokasi per bulan */
+  monthly_mandays?: Record<string, number>;
   avg_load: number;
   max_load: number;
   overwork_months: number;
   programs: WorkloadProgram[];
+  /** Total man-days kontribusi auditor di seluruh program tahun ini */
+  total_mandays?: number;
+  /** Pagu kapasitas man-days tahunan (= total hari efektif kalender) */
+  kapasitas_mandays?: number;
+  /** Persentase pemakaian: total_mandays / kapasitas_mandays × 100 */
+  utilisasi_mandays?: number;
 }
 
 export interface WorkloadSummary {
   total_auditor: number;
   avg_load: number;
-  overwork: number;   // auditor dengan max_load > 1.0
+  overwork: number;   // auditor dengan max_load > pagu_bobot_per_bulan
   idle: number;       // auditor tanpa penugasan
   tahun: number;
+  pagu_bobot_per_bulan: number;  // dari master.bobot_peran (default 2.0)
+  bobot_peran?: Record<string, number>; // peran → bobot, dari master.bobot_peran tahun berjalan
+  kapasitas_mandays?: number;            // total hari efektif kalender tahun
 }
 
 export interface WorkloadResponse {

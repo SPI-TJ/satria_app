@@ -285,98 +285,99 @@ export async function upsertBobotPeran(req: Request, res: Response) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  4. TIPE PENUGASAN
+//  4. KELOMPOK PENUGASAN  (master generik: Kategori / Sifat
+//     Program / Kategori Anggaran / dst.)
 // ════════════════════════════════════════════════════════════
 
-export async function getTipePenugasan(req: Request, res: Response) {
+export async function getKelompokPenugasan(req: Request, res: Response) {
   try {
-    const { kategori_program } = req.query;
+    const { tipe } = req.query;
     const params: unknown[] = [];
-    const conds: string[] = ['deleted_at IS NULL', 'is_active = TRUE'];
+    const conds: string[] = ['deleted_at IS NULL'];
 
-    if (kategori_program) {
-      params.push(kategori_program);
-      conds.push(`kategori_program = $${params.length}`);
+    if (tipe) {
+      params.push(tipe);
+      conds.push(`tipe = $${params.length}`);
     }
     const result = await query(
-      `SELECT id, kategori_program, kode, nama, deskripsi, default_hari, urutan, is_active,
-              created_at, updated_at
-         FROM master.tipe_penugasan
+      `SELECT id, tipe, nilai, urutan, is_active, created_at, updated_at
+         FROM master.kelompok_penugasan
         WHERE ${conds.join(' AND ')}
-        ORDER BY kategori_program, urutan, kode`,
+        ORDER BY tipe, urutan, nilai`,
       params,
     );
     return res.json({ success: true, data: result.rows });
   } catch (err) {
-    logger.error(`[SETTINGS] Tipe list failed: ${(err as Error).message}`, { error: err });
+    logger.error(`[SETTINGS] Kelompok list failed: ${(err as Error).message}`, { error: err });
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 }
 
-export async function createTipePenugasan(req: Request, res: Response) {
+export async function createKelompokPenugasan(req: Request, res: Response) {
   try {
-    const { kategori_program, kode, nama, deskripsi, default_hari, urutan } = req.body;
-    if (!kategori_program || !kode || !nama) {
-      return res.status(400).json({ success: false, message: 'kategori_program, kode, nama wajib diisi.' });
+    const { tipe, nilai, urutan } = req.body;
+    if (!tipe || !nilai) {
+      return res.status(400).json({ success: false, message: 'tipe dan nilai wajib diisi.' });
     }
     const result = await query(
-      `INSERT INTO master.tipe_penugasan
-         (kategori_program, kode, nama, deskripsi, default_hari, urutan)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO master.kelompok_penugasan (tipe, nilai, urutan)
+       VALUES ($1,$2,$3)
        RETURNING *`,
-      [kategori_program, kode, nama, deskripsi ?? null, default_hari ?? null, urutan ?? 0],
+      [tipe, nilai, urutan ?? 0],
     );
-    logger.info('[SETTINGS] Tipe penugasan created', { id: result.rows[0].id, by: req.user!.id });
+    logger.info('[SETTINGS] Kelompok penugasan created', { id: result.rows[0].id, by: req.user!.id });
     return res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     const msg = (err as Error).message;
-    if (msg.includes('uq_tipe_penugasan')) {
-      return res.status(409).json({ success: false, message: 'Kode sudah ada di kategori tersebut.' });
+    if (msg.includes('uq_kelompok_penugasan')) {
+      return res.status(409).json({ success: false, message: 'Nilai sudah ada untuk tipe tersebut.' });
     }
-    logger.error(`[SETTINGS] Tipe create failed: ${msg}`, { error: err });
+    logger.error(`[SETTINGS] Kelompok create failed: ${msg}`, { error: err });
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 }
 
-export async function updateTipePenugasan(req: Request, res: Response) {
+export async function updateKelompokPenugasan(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const { kode, nama, deskripsi, default_hari, urutan, is_active } = req.body;
+    const { tipe, nilai, urutan, is_active } = req.body;
     const result = await query(
-      `UPDATE master.tipe_penugasan
-          SET kode         = COALESCE($2, kode),
-              nama         = COALESCE($3, nama),
-              deskripsi    = COALESCE($4, deskripsi),
-              default_hari = COALESCE($5, default_hari),
-              urutan       = COALESCE($6, urutan),
-              is_active    = COALESCE($7, is_active),
-              updated_at   = NOW()
+      `UPDATE master.kelompok_penugasan
+          SET tipe       = COALESCE($2, tipe),
+              nilai      = COALESCE($3, nilai),
+              urutan     = COALESCE($4, urutan),
+              is_active  = COALESCE($5, is_active),
+              updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
         RETURNING *`,
-      [id, kode, nama, deskripsi, default_hari, urutan, is_active],
+      [id, tipe, nilai, urutan, is_active],
     );
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Tipe penugasan tidak ditemukan.' });
+      return res.status(404).json({ success: false, message: 'Kelompok penugasan tidak ditemukan.' });
     }
     return res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    logger.error(`[SETTINGS] Tipe update failed: ${(err as Error).message}`, { error: err });
+    const msg = (err as Error).message;
+    if (msg.includes('uq_kelompok_penugasan')) {
+      return res.status(409).json({ success: false, message: 'Nilai sudah ada untuk tipe tersebut.' });
+    }
+    logger.error(`[SETTINGS] Kelompok update failed: ${msg}`, { error: err });
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 }
 
-export async function deleteTipePenugasan(req: Request, res: Response) {
+export async function deleteKelompokPenugasan(req: Request, res: Response) {
   try {
     const { id } = req.params;
     await query(
-      `UPDATE master.tipe_penugasan SET deleted_at = NOW()
+      `UPDATE master.kelompok_penugasan SET deleted_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL`,
       [id],
     );
-    logger.info('[SETTINGS] Tipe penugasan deleted', { id, by: req.user!.id });
-    return res.json({ success: true, message: 'Tipe penugasan dihapus.' });
+    logger.info('[SETTINGS] Kelompok penugasan deleted', { id, by: req.user!.id });
+    return res.json({ success: true, message: 'Kelompok penugasan dihapus.' });
   } catch (err) {
-    logger.error(`[SETTINGS] Tipe delete failed: ${(err as Error).message}`, { error: err });
+    logger.error(`[SETTINGS] Kelompok delete failed: ${(err as Error).message}`, { error: err });
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 }

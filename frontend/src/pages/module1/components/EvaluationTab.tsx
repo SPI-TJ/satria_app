@@ -233,7 +233,7 @@ function DetailDrawer({
                   </div>
                   <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{d.role_tim_evaluatee}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                   <div>
                     <p className="text-slate-500 mb-1">Kompetensi</p>
                     <StarRating value={d.kompetensi_teknis} readOnly size={14} />
@@ -302,7 +302,7 @@ function SummaryRow({
       </button>
       {expanded && (
         <div className="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: 'Kompetensi Teknis', v: row.avg_kompetensi },
               { label: 'Komunikasi',        v: row.avg_komunikasi },

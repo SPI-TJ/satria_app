@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Eye, Pencil, Trash2, CheckCircle2, Clock,
@@ -6,8 +6,8 @@ import {
   Users, CalendarDays, X, AlertTriangle, Hourglass, PlayCircle, Flag, Search,
   Briefcase, TrendingDown,
 } from 'lucide-react';
-import { annualPlansApi, kalenderKerjaApi } from '../../../services/api';
-import { AnnualAuditPlan, JenisProgram, StatusPKPT, KategoriProgram, StatusProgram } from '../../../types';
+import { annualPlansApi, kalenderKerjaApi, settingsApi } from '../../../services/api';
+import { AnnualAuditPlan, JenisProgram, StatusPKPT } from '../../../types';
 import { useAuthStore } from '../../../store/auth.store';
 import toast from 'react-hot-toast';
 import ProgramFormModal from './ProgramFormModal';
@@ -79,6 +79,25 @@ export default function ProgramTab({ tahun }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<AnnualAuditPlan | null>(null);
 
   const LIMIT = 15;
+
+  // Master kelompok penugasan untuk filter dropdown
+  const { data: kelompokRes } = useQuery({
+    queryKey: ['kelompok-penugasan'],
+    queryFn: () => settingsApi.getKelompokPenugasan().then((r) => r.data.data ?? []),
+    staleTime: 5 * 60_000,
+  });
+  const kategoriOptions = useMemo(
+    () => (kelompokRes ?? []).filter((k) => k.tipe === 'Kategori' && k.is_active).map((k) => k.nilai),
+    [kelompokRes],
+  );
+  const sifatOptions = useMemo(
+    () => (kelompokRes ?? []).filter((k) => k.tipe === 'Sifat Program' && k.is_active).map((k) => k.nilai),
+    [kelompokRes],
+  );
+  const kategoriAnggaranOptions = useMemo(
+    () => (kelompokRes ?? []).filter((k) => k.tipe === 'Kategori Anggaran' && k.is_active).map((k) => k.nilai),
+    [kelompokRes],
+  );
 
   const { data: planRes, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['annual-plans', { tahun, search, jenisFilter, statusFilter, kategoriFilter, sifatProgramFilter, kategoriAnggaranFilter, bulanFilter, page }],
@@ -201,7 +220,7 @@ export default function ProgramTab({ tahun }: Props) {
           </div>
 
           {/* Dropdowns */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-2">Bulan</label>
               <select
@@ -251,10 +270,7 @@ export default function ProgramTab({ tahun }: Props) {
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
               >
                 <option value="">Semua Kategori</option>
-                <option value="Assurance">Assurance</option>
-                <option value="Non Assurance">Non Assurance</option>
-                <option value="Pemantauan Risiko">Pemantauan Risiko</option>
-                <option value="Evaluasi">Evaluasi</option>
+                {kategoriOptions.map((k) => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
 
@@ -266,9 +282,7 @@ export default function ProgramTab({ tahun }: Props) {
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
               >
                 <option value="">Semua Sifat</option>
-                <option value="Mandatory">Mandatory</option>
-                <option value="Strategis">Strategis</option>
-                <option value="Emerging Risk">Emerging Risk</option>
+                {sifatOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
@@ -280,8 +294,7 @@ export default function ProgramTab({ tahun }: Props) {
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
               >
                 <option value="">Semua Kategori</option>
-                <option value="Subsidi">Subsidi</option>
-                <option value="Non Subsidi">Non Subsidi</option>
+                {kategoriAnggaranOptions.map((k) => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
           </div>
@@ -439,7 +452,7 @@ export default function ProgramTab({ tahun }: Props) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full min-w-[1024px] text-xs">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
                 <th className="px-4 py-3 text-left font-medium text-slate-500 whitespace-nowrap">#</th>

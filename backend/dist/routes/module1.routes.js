@@ -21,6 +21,10 @@ const annual_plans_controller_1 = require("../controllers/module1/annual-plans.c
 const auditors_controller_1 = require("../controllers/module1/auditors.controller");
 const workload_controller_1 = require("../controllers/module1/workload.controller");
 const evaluation_controller_1 = require("../controllers/module1/evaluation.controller");
+const kalender_kerja_controller_1 = require("../controllers/module1/kalender-kerja.controller");
+const ceo_letter_controller_1 = require("../controllers/module1/ceo-letter.controller");
+const upload_middleware_1 = require("../middleware/upload.middleware");
+const auth_middleware_2 = require("../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 // Semua route modul 1 butuh authenticate + bukan it_admin.
 router.use(auth_middleware_1.authenticate, blockItAdmin);
@@ -53,6 +57,19 @@ router.patch('/annual-plans/:id/finalize', auth_middleware_1.authenticate, annua
 router.patch('/annual-plans/:id/mark-completed', auth_middleware_1.authenticate, annual_plans_controller_1.markPlanCompleted);
 router.patch('/annual-plans/:id/mark-on-progress', auth_middleware_1.authenticate, annual_plans_controller_1.markPlanOnProgress);
 router.post('/annual-plans/scan-deadlines', auth_middleware_1.authenticate, annual_plans_controller_1.runDeadlineScan);
+// ── Kalender Kerja / Man-Days ────────────────────────────────
+const kalenderAdmin = (0, auth_middleware_2.requireRole)('kepala_spi', 'admin_spi');
+router.get('/kalender-kerja', auth_middleware_1.authenticate, kalender_kerja_controller_1.getKalenderKerja);
+router.put('/kalender-kerja', auth_middleware_1.authenticate, kalenderAdmin, kalender_kerja_controller_1.upsertKalenderKerja);
+router.post('/kalender-kerja/:id/lock', auth_middleware_1.authenticate, kalenderAdmin, kalender_kerja_controller_1.lockKalenderKerja);
+router.post('/kalender-kerja/:id/unlock', auth_middleware_1.authenticate, kalenderAdmin, kalender_kerja_controller_1.unlockKalenderKerja);
+// ── CEO Letter (Surat Arahan Direksi) ────────────────────────
+const ceoLetterAdmin = (0, auth_middleware_2.requireRole)('kepala_spi', 'admin_spi');
+router.get('/ceo-letter', auth_middleware_1.authenticate, ceo_letter_controller_1.getCeoLetter);
+router.put('/ceo-letter', auth_middleware_1.authenticate, ceoLetterAdmin, upload_middleware_1.uploadCeoLetterPdf.single('file'), ceo_letter_controller_1.upsertCeoLetter);
+router.post('/ceo-letter/:id/file', auth_middleware_1.authenticate, ceoLetterAdmin, upload_middleware_1.uploadCeoLetterPdf.single('file'), ceo_letter_controller_1.uploadCeoLetterFile);
+router.delete('/ceo-letter/:id/file', auth_middleware_1.authenticate, ceoLetterAdmin, ceo_letter_controller_1.deleteCeoLetterFile);
+router.delete('/ceo-letter/:id', auth_middleware_1.authenticate, ceoLetterAdmin, ceo_letter_controller_1.deleteCeoLetter);
 // ── Penilaian Auditor ────────────────────────────────────────
 router.get('/evaluations/pending', auth_middleware_1.authenticate, evaluation_controller_1.getPendingEvaluations);
 router.get('/evaluations/summary', auth_middleware_1.authenticate, evaluation_controller_1.getEvaluationSummary);

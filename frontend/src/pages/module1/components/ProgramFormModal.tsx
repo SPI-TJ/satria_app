@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  X, Loader2, Users, CalendarDays, AlertCircle, AlertTriangle,
-  Search, CheckCircle2, ChevronDown, Building2,
+  X, Loader2, Users, CalendarDays, AlertTriangle,
+  Search, ChevronDown, Building2,
 } from 'lucide-react';
-import { annualPlansApi, auditorsApi, risksApi, workloadApi, organisasiApi, CreatePlanPayload } from '../../../services/api';
+import { annualPlansApi, auditorsApi, risksApi, workloadApi, organisasiApi, settingsApi, CreatePlanPayload } from '../../../services/api';
 import { AnnualAuditPlan, AnnualAuditPlanDetail, Auditor, Departemen, Divisi, JenisProgram, KategoriProgram, RiskData, RiskLevelKode, StatusProgram } from '../../../types';
 import toast from 'react-hot-toast';
 
@@ -24,18 +24,15 @@ interface FormState {
   deskripsi:           string;
   tanggal_mulai:       string;
   tanggal_selesai:     string;
-  pengendali_teknis_id: string;
-  ketua_tim_id:        string;
-  anggota_ids:         string[];
-  team_alokasi:        Record<string, string>;  // user_id -> hari (string supaya input nyaman)
+  pengendali_teknis_ids: string[];
+  ketua_tim_ids:         string[];
+  anggota_ids:           string[];
+  hari_penugasan:      string;            // jumlah hari penugasan global untuk semua anggota tim
   risk_ids:            string[];
   // Finansial (Fase 5 — disederhanakan)
   anggaran:            string;            // simpan sebagai string supaya input tetap nyaman
-  kategori_anggaran:   '' | 'Subsidi' | 'Non Subsidi';
+  kategori_anggaran:   string;
 }
-
-const KATEGORI_OPTIONS: KategoriProgram[] = ['Assurance', 'Non Assurance', 'Pemantauan Risiko', 'Evaluasi'];
-const STATUS_OPTIONS:   StatusProgram[]   = ['Mandatory', 'Strategis', 'Emerging Risk'];
 
 const LEVEL_BADGE: Record<RiskLevelKode, string> = {
   E:  'bg-red-100 text-red-700',
@@ -66,17 +63,19 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
     deskripsi:            '',
     tanggal_mulai:        '',
     tanggal_selesai:      '',
-    pengendali_teknis_id: '',
-    ketua_tim_id:         '',
-    anggota_ids:          [],
-    team_alokasi:         {},
+    pengendali_teknis_ids: [],
+    ketua_tim_ids:         [],
+    anggota_ids:           [],
+    hari_penugasan:       '',
     risk_ids:             [],
     anggaran:             '',
     kategori_anggaran:    '',
   });
 
   const [riskSearch,   setRiskSearch]   = useState('');
-  const [anggotaOpen,  setAnggotaOpen]  = useState(false);
+  const [pengendaliOpen, setPengendaliOpen] = useState(false);
+  const [ketuaOpen,      setKetuaOpen]      = useState(false);
+  const [anggotaOpen,    setAnggotaOpen]    = useState(false);
   const [auditeeOpen,  setAuditeeOpen]  = useState(false);
   const [auditeeSearch, setAuditeeSearch] = useState('');
   const [selectedAuditeeDeptIds, setSelectedAuditeeDeptIds] = useState<string[]>([]);
@@ -98,14 +97,13 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
   // Safeguard pengisian data agar tidak crash jika dari API bernilai null/undefined
   useEffect(() => {
     if (detailRes) {
-      const pengendalId = detailRes.team?.find((t) => t.role_tim === 'Pengendali Teknis')?.user_id ?? '';
-      const ketuaId     = detailRes.team?.find((t) => t.role_tim === 'Ketua Tim')?.user_id ?? '';
-      const anggotaIds  = detailRes.team?.filter((t) => t.role_tim === 'Anggota Tim').map((t) => t.user_id) ?? [];
+      const pengendaliIds = detailRes.team?.filter((t) => t.role_tim === 'Pengendali Teknis').map((t) => t.user_id) ?? [];
+      const ketuaIds      = detailRes.team?.filter((t) => t.role_tim === 'Ketua Tim').map((t) => t.user_id) ?? [];
+      const anggotaIds    = detailRes.team?.filter((t) => t.role_tim === 'Anggota Tim').map((t) => t.user_id) ?? [];
       const riskIds     = detailRes.risks?.map((r) => r.id) ?? [];
-      const teamAlokasi: Record<string, string> = {};
-      (detailRes.team ?? []).forEach((t) => {
-        if (t.hari_alokasi != null) teamAlokasi[t.user_id] = String(t.hari_alokasi);
-      });
+      const hariAlokasiValues = (detailRes.team ?? [])
+        .map((t) => t.hari_alokasi)
+        .filter((v): v is number => v != null);
 
       setForm({
         jenis_program:        (detailRes.jenis_program as JenisProgram) || 'PKPT',
@@ -116,16 +114,35 @@ export default function ProgramFormModal({ tahun, editData, onClose, onSuccess }
         deskripsi:            detailRes.deskripsi || '',
         tanggal_mulai:        detailRes.tanggal_mulai?.slice(0, 10) || '',
         tanggal_selesai:      detailRes.tanggal_selesai?.slice(0, 10) || '',
-        pengendali_teknis_id: pengendalId,
-        ketua_tim_id:         ketuaId,
-        anggota_ids:          anggotaIds,
-        team_alokasi:         teamAlokasi,
+        pengendali_teknis_ids: pengendaliIds,
+        ketua_tim_ids:         ketuaIds,
+        anggota_ids:           anggotaIds,
+        hari_penugasan:       hariAlokasiValues.length > 0 ? String(hariAlokasiValues[0]) : '',
         risk_ids:             riskIds,
         anggaran:             detailRes.anggaran != null ? String(detailRes.anggaran) : '',
-        kategori_anggaran:    (detailRes.kategori_anggaran ?? '') as FormState['kategori_anggaran'],
+        kategori_anggaran:    detailRes.kategori_anggaran ?? '',
       });
     }
   }, [detailRes]);
+
+  // Master kelompok penugasan (Kategori / Sifat Program / Kategori Anggaran)
+  const { data: kelompokRes } = useQuery({
+    queryKey: ['kelompok-penugasan'],
+    queryFn: () => settingsApi.getKelompokPenugasan().then((r) => r.data.data ?? []),
+    staleTime: 5 * 60_000,
+  });
+  const kategoriOptions = useMemo(
+    () => (kelompokRes ?? []).filter((k) => k.tipe === 'Kategori' && k.is_active).map((k) => k.nilai),
+    [kelompokRes],
+  );
+  const sifatOptions = useMemo(
+    () => (kelompokRes ?? []).filter((k) => k.tipe === 'Sifat Program' && k.is_active).map((k) => k.nilai),
+    [kelompokRes],
+  );
+  const kategoriAnggaranOptions = useMemo(
+    () => (kelompokRes ?? []).filter((k) => k.tipe === 'Kategori Anggaran' && k.is_active).map((k) => k.nilai),
+    [kelompokRes],
+  );
 
   const { data: auditorsRes } = useQuery({
     queryKey: ['auditors'],
@@ -235,27 +252,49 @@ const { data: riskRes } = useQuery({
   );
 
   const jumlah_personil = useMemo(
-    () =>
-      (form.pengendali_teknis_id ? 1 : 0) +
-      (form.ketua_tim_id ? 1 : 0) +
-      form.anggota_ids.length,
-    [form.pengendali_teknis_id, form.ketua_tim_id, form.anggota_ids],
+    () => new Set([
+      ...form.pengendali_teknis_ids,
+      ...form.ketua_tim_ids,
+      ...form.anggota_ids,
+    ].filter(Boolean)).size,
+    [form.pengendali_teknis_ids, form.ketua_tim_ids, form.anggota_ids],
   );
 
-  const ketuaIds   = useMemo(() => (form.ketua_tim_id ? [form.ketua_tim_id] : []), [form.ketua_tim_id]);
+  const ptIds      = form.pengendali_teknis_ids;
+  const ketuaIds   = form.ketua_tim_ids;
   const anggotaIds = form.anggota_ids;
-  const canSimulate = !!form.tanggal_mulai && !!form.tanggal_selesai && form.tanggal_selesai >= form.tanggal_mulai && (ketuaIds.length + anggotaIds.length) > 0;
+  const selectedTeamIds = useMemo(
+    () => Array.from(new Set([
+      ...form.pengendali_teknis_ids,
+      ...form.ketua_tim_ids,
+      ...form.anggota_ids,
+    ].filter(Boolean) as string[])),
+    [form.pengendali_teknis_ids, form.ketua_tim_ids, form.anggota_ids],
+  );
+  const hariPenugasanNumber = useMemo(() => {
+    if (form.hari_penugasan === '') return undefined;
+    const n = Number(form.hari_penugasan);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  }, [form.hari_penugasan]);
+  const canSimulate = !!form.tanggal_mulai && !!form.tanggal_selesai && form.tanggal_selesai >= form.tanggal_mulai && (ptIds.length + ketuaIds.length + anggotaIds.length) > 0;
+
+  const simPT = useQuery({
+    queryKey: ['workload-sim', 'pt', ptIds, form.tanggal_mulai, form.tanggal_selesai, hariPenugasanNumber],
+    queryFn: () => workloadApi.simulate({ user_ids: ptIds, tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai, role_tim: 'Pengendali Teknis', hari_alokasi: hariPenugasanNumber }).then((r) => r.data),
+    enabled: canSimulate && ptIds.length > 0,
+    staleTime: 30_000,
+  });
 
   const simKetua = useQuery({
-    queryKey: ['workload-sim', 'ketua', ketuaIds, form.tanggal_mulai, form.tanggal_selesai],
-    queryFn: () => workloadApi.simulate({ user_ids: ketuaIds, tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai, role_tim: 'Ketua Tim' }).then((r) => r.data),
+    queryKey: ['workload-sim', 'ketua', ketuaIds, form.tanggal_mulai, form.tanggal_selesai, hariPenugasanNumber],
+    queryFn: () => workloadApi.simulate({ user_ids: ketuaIds, tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai, role_tim: 'Ketua Tim', hari_alokasi: hariPenugasanNumber }).then((r) => r.data),
     enabled: canSimulate && ketuaIds.length > 0,
     staleTime: 30_000,
   });
 
   const simAnggota = useQuery({
-    queryKey: ['workload-sim', 'anggota', anggotaIds, form.tanggal_mulai, form.tanggal_selesai],
-    queryFn: () => workloadApi.simulate({ user_ids: anggotaIds, tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai, role_tim: 'Anggota Tim' }).then((r) => r.data),
+    queryKey: ['workload-sim', 'anggota', anggotaIds, form.tanggal_mulai, form.tanggal_selesai, hariPenugasanNumber],
+    queryFn: () => workloadApi.simulate({ user_ids: anggotaIds, tanggal_mulai: form.tanggal_mulai, tanggal_selesai: form.tanggal_selesai, role_tim: 'Anggota Tim', hari_alokasi: hariPenugasanNumber }).then((r) => r.data),
     enabled: canSimulate && anggotaIds.length > 0,
     staleTime: 30_000,
   });
@@ -263,6 +302,9 @@ const { data: riskRes } = useQuery({
   const overworkAlerts = useMemo(() => {
     const alerts: { user_id: string; nama: string; role_tim: string; months: number[] }[] = [];
     const byId = (id: string) => auditors.find((a) => a.id === id)?.nama_lengkap ?? 'Auditor';
+    (simPT.data?.data ?? []).filter((r) => r.is_overwork).forEach((r) =>
+      alerts.push({ user_id: r.user_id, nama: byId(r.user_id), role_tim: 'Pengendali Teknis', months: r.overwork_months }),
+    );
     (simKetua.data?.data ?? []).filter((r) => r.is_overwork).forEach((r) =>
       alerts.push({ user_id: r.user_id, nama: byId(r.user_id), role_tim: 'Ketua Tim', months: r.overwork_months }),
     );
@@ -270,7 +312,7 @@ const { data: riskRes } = useQuery({
       alerts.push({ user_id: r.user_id, nama: byId(r.user_id), role_tim: 'Anggota Tim', months: r.overwork_months }),
     );
     return alerts;
-  }, [simKetua.data, simAnggota.data, auditors]);
+  }, [simPT.data, simKetua.data, simAnggota.data, auditors]);
 
   const filteredRisks = useMemo(
     () =>
@@ -286,14 +328,47 @@ const { data: riskRes } = useQuery({
   const pengendaliOptions = auditors.filter((a) => ['kepala_spi', 'pengendali_teknis'].includes(a.role));
   const ketuaOptions = auditors.filter((a) => ['pengendali_teknis', 'anggota_tim'].includes(a.role));
   const anggotaOptions = auditors.filter((a) => ['pengendali_teknis', 'anggota_tim'].includes(a.role));
+  const auditorNameById = useMemo(() => new Map(auditors.map((a) => [a.id, a.nama_lengkap])), [auditors]);
 
   const set = (k: keyof FormState, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
+  function togglePengendali(uid: string) {
+    setForm((f) => {
+      const selected = f.pengendali_teknis_ids.includes(uid);
+      return {
+        ...f,
+        pengendali_teknis_ids: selected
+          ? f.pengendali_teknis_ids.filter((x) => x !== uid)
+          : [...f.pengendali_teknis_ids, uid],
+        // Pastikan auditor tidak dobel di role lain saat ditambahkan
+        ketua_tim_ids: selected ? f.ketua_tim_ids : f.ketua_tim_ids.filter((x) => x !== uid),
+        anggota_ids:   selected ? f.anggota_ids   : f.anggota_ids.filter((x) => x !== uid),
+      };
+    });
+  }
+
+  function toggleKetua(uid: string) {
+    setForm((f) => {
+      const selected = f.ketua_tim_ids.includes(uid);
+      return {
+        ...f,
+        ketua_tim_ids:         selected ? f.ketua_tim_ids.filter((x) => x !== uid) : [...f.ketua_tim_ids, uid],
+        anggota_ids:           selected ? f.anggota_ids : f.anggota_ids.filter((x) => x !== uid),
+        pengendali_teknis_ids: selected ? f.pengendali_teknis_ids : f.pengendali_teknis_ids.filter((x) => x !== uid),
+      };
+    });
+  }
+
   function toggleAnggota(uid: string) {
-    setForm((f) => ({
-      ...f,
-      anggota_ids: f.anggota_ids.includes(uid) ? f.anggota_ids.filter((x) => x !== uid) : [...f.anggota_ids, uid],
-    }));
+    setForm((f) => {
+      const selected = f.anggota_ids.includes(uid);
+      return {
+        ...f,
+        anggota_ids:           selected ? f.anggota_ids.filter((x) => x !== uid) : [...f.anggota_ids, uid],
+        ketua_tim_ids:         selected ? f.ketua_tim_ids : f.ketua_tim_ids.filter((x) => x !== uid),
+        pengendali_teknis_ids: selected ? f.pengendali_teknis_ids : f.pengendali_teknis_ids.filter((x) => x !== uid),
+      };
+    });
   }
 
   function toggleAuditeeDept(deptId: string) {
@@ -330,18 +405,18 @@ const { data: riskRes } = useQuery({
         deskripsi:            form.deskripsi || undefined,
         tanggal_mulai:        form.tanggal_mulai,
         tanggal_selesai:      form.tanggal_selesai,
-        pengendali_teknis_id: form.pengendali_teknis_id || undefined,
-        ketua_tim_id:         form.ketua_tim_id || undefined,
-        anggota_ids:          form.anggota_ids.length > 0 ? form.anggota_ids : undefined,
+        pengendali_teknis_id:  form.pengendali_teknis_ids[0] || undefined,
+        pengendali_teknis_ids: form.pengendali_teknis_ids.length > 0 ? form.pengendali_teknis_ids : undefined,
+        ketua_tim_id:          form.ketua_tim_ids[0] || undefined,
+        ketua_tim_ids:         form.ketua_tim_ids.length > 0 ? form.ketua_tim_ids : undefined,
+        anggota_ids:           form.anggota_ids.length > 0 ? form.anggota_ids : undefined,
         team_alokasi:         (() => {
+          if (hariPenugasanNumber === undefined || selectedTeamIds.length === 0) return undefined;
           const out: Record<string, number> = {};
-          Object.entries(form.team_alokasi).forEach(([uid, v]) => {
-            if (v !== '' && v != null) {
-              const n = Number(v);
-              if (Number.isFinite(n) && n >= 0) out[uid] = n;
-            }
+          selectedTeamIds.forEach((uid) => {
+            out[uid] = hariPenugasanNumber;
           });
-          return Object.keys(out).length > 0 ? out : undefined;
+          return out;
         })(),
         risk_ids:             form.jenis_program === 'PKPT' && form.risk_ids.length > 0 ? form.risk_ids : undefined,
         // Finansial (Fase 5 — disederhanakan)
@@ -361,12 +436,6 @@ const { data: riskRes } = useQuery({
     },
   });
 
-  const selectedAuditorNames = [
-    form.pengendali_teknis_id ? auditors.find((a) => a.id === form.pengendali_teknis_id)?.nama_lengkap : null,
-    form.ketua_tim_id ? auditors.find((a) => a.id === form.ketua_tim_id)?.nama_lengkap : null,
-    ...form.anggota_ids.map((id) => auditors.find((a) => a.id === id)?.nama_lengkap).filter(Boolean),
-  ].filter(Boolean) as string[];
-
   // ── FUNGSI VALIDASI KLIK (Akan memunculkan pop-up jika gagal) ──
   const handleSaveClick = () => {
     if (!form.judul_program?.trim()) {
@@ -377,6 +446,12 @@ const { data: riskRes } = useQuery({
     }
     if (form.tanggal_selesai < form.tanggal_mulai) {
       return toast.error('Tanggal Selesai tidak boleh lebih awal dari Tanggal Mulai.');
+    }
+    if (form.hari_penugasan !== '') {
+      const hari = Number(form.hari_penugasan);
+      if (!Number.isFinite(hari) || hari < 0) {
+        return toast.error('Jumlah Hari Penugasan harus berupa angka 0 atau lebih.');
+      }
     }
     
     // Jika semua lolos, jalankan proses simpan ke backend
@@ -389,7 +464,7 @@ const { data: riskRes } = useQuery({
         <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
         <div className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-xl flex flex-col max-h-[92vh] overflow-hidden">
           
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
             <div>
               <h2 className="font-bold text-slate-800 text-base">
                 {isEdit ? 'Edit Program Kerja' : 'Buat Program Kerja Baru'}
@@ -401,7 +476,7 @@ const { data: riskRes } = useQuery({
             </button>
           </div>
 
-          <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+          <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-5 space-y-6">
             <section>
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Informasi Program</h3>
               
@@ -444,14 +519,16 @@ const { data: riskRes } = useQuery({
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Kategori</label>
                   <select value={form.kategori_program} onChange={(e) => set('kategori_program', e.target.value)} className="input text-sm w-full">
-                    {KATEGORI_OPTIONS.map((k) => <option key={k}>{k}</option>)}
+                    {kategoriOptions.length === 0 && <option value="">— Belum ada nilai —</option>}
+                    {kategoriOptions.map((k) => <option key={k} value={k}>{k}</option>)}
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1.5">Sifat Program</label>
                   <select value={form.status_program} onChange={(e) => set('status_program', e.target.value)} className="input text-sm w-full">
-                    {STATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                    {sifatOptions.length === 0 && <option value="">— Belum ada nilai —</option>}
+                    {sifatOptions.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
 
@@ -600,18 +677,17 @@ const { data: riskRes } = useQuery({
                     </label>
                     <select
                       value={form.kategori_anggaran}
-                      onChange={(e) => set('kategori_anggaran', e.target.value as FormState['kategori_anggaran'])}
+                      onChange={(e) => set('kategori_anggaran', e.target.value)}
                       className="input text-sm w-full"
                     >
                       <option value="">— Pilih Kategori —</option>
-                      <option value="Subsidi">Subsidi</option>
-                      <option value="Non Subsidi">Non Subsidi</option>
+                      {kategoriAnggaranOptions.map((k) => <option key={k} value={k}>{k}</option>)}
                     </select>
                   </div>
                 </div>
 
                 <p className="text-[11px] text-slate-400 mt-1">
-                  <b>Man-Days terpakai</b> program ini dihitung otomatis dari tim × durasi × bobot peran. Pagu HP tahunan SPI dipantau lewat tab Man-Days.
+                  <b>Man-Days terpakai</b> program ini dihitung otomatis dari tim × hari penugasan × bobot peran. Pagu HP tahunan SPI dipantau lewat tab Man-Days.
                 </p>
               </div>
             </section>
@@ -642,13 +718,34 @@ const { data: riskRes } = useQuery({
                     className="input text-sm w-full"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Jumlah Hari Penugasan
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.hari_penugasan}
+                      onChange={(e) => set('hari_penugasan', e.target.value)}
+                      placeholder={estimasi_hari > 0 ? String(estimasi_hari) : 'cth: 30'}
+                      className="input text-sm w-full pr-14"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                      hari
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    Berlaku untuk seluruh tim. Kosongkan untuk memakai durasi kalender program.
+                  </p>
+                </div>
               </div>
 
               {estimasi_hari > 0 && (
                 <div className="mt-3 flex items-center gap-2">
                   <CalendarDays className="w-4 h-4 text-primary-500" />
                   <span className="text-sm text-slate-600">
-                    Estimasi Hari Kerja:
+                    Durasi Kalender:
                     <span className="ml-2 font-bold text-primary-700 text-base">{estimasi_hari}</span>
                     <span className="text-slate-400 text-xs ml-1">hari</span>
                   </span>
@@ -669,23 +766,100 @@ const { data: riskRes } = useQuery({
 
               <div className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Pengendali Teknis</label>
-                  <select value={form.pengendali_teknis_id} onChange={(e) => set('pengendali_teknis_id', e.target.value)} className="input text-sm w-full">
-                    <option value="">— Pilih Pengendali Teknis —</option>
-                    {pengendaliOptions.map((a) => (
-                      <option key={a.id} value={a.id}>{a.nama_lengkap} ({a.role.replace('_', ' ')})</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Pengendali Teknis {form.pengendali_teknis_ids.length > 0 && <span className="ml-2 text-primary-600">({form.pengendali_teknis_ids.length} dipilih)</span>}
+                  </label>
+                  <button type="button" onClick={() => setPengendaliOpen((o) => !o)} className="w-full flex items-center justify-between input text-sm text-left">
+                    <span className={form.pengendali_teknis_ids.length > 0 ? 'text-slate-700 truncate' : 'text-slate-400'}>
+                      {form.pengendali_teknis_ids.length > 0
+                        ? form.pengendali_teknis_ids.map((id) => auditorNameById.get(id)).filter(Boolean).join(', ')
+                        : '— Pilih Pengendali Teknis —'}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${pengendaliOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {pengendaliOpen && (
+                    <div className="mt-1 border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="max-h-40 overflow-y-auto divide-y divide-slate-50">
+                        {pengendaliOptions.length === 0 ? (
+                          <p className="px-4 py-3 text-xs text-slate-400 text-center">Tidak ada auditor tersedia</p>
+                        ) : (
+                          pengendaliOptions.map((a) => {
+                            const checked = form.pengendali_teknis_ids.includes(a.id);
+                            return (
+                              <label key={a.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-primary-50' : 'hover:bg-slate-50'}`}>
+                                <input type="checkbox" checked={checked} onChange={() => togglePengendali(a.id)} className="rounded text-primary-600 flex-shrink-0" />
+                                <span className="text-sm text-slate-700 flex-1">{a.nama_lengkap}</span>
+                                <span className="text-xs text-slate-400 capitalize">{a.role.replace('_', ' ')}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {form.pengendali_teknis_ids.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {form.pengendali_teknis_ids.map((id) => (
+                        <span key={id} className="inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700">
+                          {auditorNameById.get(id) ?? 'Auditor'}
+                          <button type="button" onClick={() => togglePengendali(id)} className="text-primary-500 hover:text-primary-800">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ketua Tim</label>
-                  <select value={form.ketua_tim_id} onChange={(e) => set('ketua_tim_id', e.target.value)} className="input text-sm w-full">
-                    <option value="">— Pilih Ketua Tim —</option>
-                    {ketuaOptions.map((a) => (
-                      <option key={a.id} value={a.id}>{a.nama_lengkap} ({a.role.replace('_', ' ')})</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Ketua Tim {form.ketua_tim_ids.length > 0 && <span className="ml-2 text-primary-600">({form.ketua_tim_ids.length} dipilih)</span>}
+                  </label>
+                  <button type="button" onClick={() => setKetuaOpen((o) => !o)} className="w-full flex items-center justify-between input text-sm text-left">
+                    <span className={form.ketua_tim_ids.length > 0 ? 'text-slate-700 truncate' : 'text-slate-400'}>
+                      {form.ketua_tim_ids.length > 0
+                        ? form.ketua_tim_ids.map((id) => auditorNameById.get(id)).filter(Boolean).join(', ')
+                        : '— Pilih Ketua Tim —'}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${ketuaOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {ketuaOpen && (
+                    <div className="mt-1 border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="max-h-40 overflow-y-auto divide-y divide-slate-50">
+                        {ketuaOptions.length === 0 ? (
+                          <p className="px-4 py-3 text-xs text-slate-400 text-center">Tidak ada auditor tersedia</p>
+                        ) : (
+                          ketuaOptions.map((a) => {
+                            const checked = form.ketua_tim_ids.includes(a.id);
+                            const disabled = form.pengendali_teknis_ids.includes(a.id);
+                            return (
+                              <label key={a.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${disabled ? 'cursor-not-allowed opacity-50' : checked ? 'cursor-pointer bg-primary-50' : 'cursor-pointer hover:bg-slate-50'}`}>
+                                <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleKetua(a.id)} className="rounded text-primary-600 flex-shrink-0" />
+                                <span className="text-sm text-slate-700 flex-1">{a.nama_lengkap}</span>
+                                <span className="text-xs text-slate-400 capitalize">{a.role.replace('_', ' ')}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {form.ketua_tim_ids.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {form.ketua_tim_ids.map((id) => (
+                        <span key={id} className="inline-flex items-center gap-1 rounded-full border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700">
+                          {auditorNameById.get(id) ?? 'Auditor'}
+                          <button type="button" onClick={() => toggleKetua(id)} className="text-primary-500 hover:text-primary-800">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -693,8 +867,10 @@ const { data: riskRes } = useQuery({
                     Anggota Tim {form.anggota_ids.length > 0 && <span className="ml-2 text-primary-600">({form.anggota_ids.length} dipilih)</span>}
                   </label>
                   <button type="button" onClick={() => setAnggotaOpen((o) => !o)} className="w-full flex items-center justify-between input text-sm text-left">
-                    <span className={form.anggota_ids.length > 0 ? 'text-slate-700' : 'text-slate-400'}>
-                      {form.anggota_ids.length > 0 ? `${form.anggota_ids.length} anggota dipilih` : '— Pilih Anggota Tim —'}
+                    <span className={form.anggota_ids.length > 0 ? 'text-slate-700 truncate' : 'text-slate-400'}>
+                      {form.anggota_ids.length > 0
+                        ? form.anggota_ids.map((id) => auditorNameById.get(id)).filter(Boolean).join(', ')
+                        : '— Pilih Anggota Tim —'}
                     </span>
                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${anggotaOpen ? 'rotate-180' : ''}`} />
                   </button>
@@ -707,9 +883,10 @@ const { data: riskRes } = useQuery({
                         ) : (
                           anggotaOptions.map((a) => {
                             const checked = form.anggota_ids.includes(a.id);
+                            const disabled = form.pengendali_teknis_ids.includes(a.id);
                             return (
-                              <label key={a.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${checked ? 'bg-primary-50' : 'hover:bg-slate-50'}`}>
-                                <input type="checkbox" checked={checked} onChange={() => toggleAnggota(a.id)} className="rounded text-primary-600 flex-shrink-0" />
+                              <label key={a.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${disabled ? 'cursor-not-allowed opacity-50' : checked ? 'cursor-pointer bg-primary-50' : 'cursor-pointer hover:bg-slate-50'}`}>
+                                <input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleAnggota(a.id)} className="rounded text-primary-600 flex-shrink-0" />
                                 <span className="text-sm text-slate-700 flex-1">{a.nama_lengkap}</span>
                                 <span className="text-xs text-slate-400 capitalize">{a.role.replace('_', ' ')}</span>
                               </label>
@@ -719,54 +896,20 @@ const { data: riskRes } = useQuery({
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* Alokasi Hari Kerja per Anggota (Fase 5 — fix Man-Days) */}
-                {(form.pengendali_teknis_id || form.ketua_tim_id || form.anggota_ids.length > 0) && (
-                  <div className="bg-slate-50 rounded-xl px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-slate-600">Alokasi Hari Kerja per Anggota</p>
-                      <span className="text-[10px] text-slate-400">
-                        Default: {estimasi_hari || 0} hari (durasi program)
-                      </span>
+                  {form.anggota_ids.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {form.anggota_ids.map((id) => (
+                        <span key={id} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+                          {auditorNameById.get(id) ?? 'Auditor'}
+                          <button type="button" onClick={() => toggleAnggota(id)} className="text-slate-400 hover:text-slate-700">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
                     </div>
-                    <p className="text-[11px] text-slate-500 mb-2">
-                      Isi <b>hari kerja aktual</b> untuk tiap anggota. Kosongkan untuk pakai default durasi program.
-                      Man-Days terpakai = Σ(hari × bobot peran).
-                    </p>
-                    <div className="space-y-1.5">
-                      {[
-                        form.pengendali_teknis_id && { uid: form.pengendali_teknis_id, role: 'Pengendali Teknis' as const },
-                        form.ketua_tim_id        && { uid: form.ketua_tim_id,        role: 'Ketua Tim' as const },
-                        ...form.anggota_ids.map((uid) => ({ uid, role: 'Anggota Tim' as const })),
-                      ]
-                        .filter((x): x is { uid: string; role: 'Pengendali Teknis' | 'Ketua Tim' | 'Anggota Tim' } => !!x)
-                        .map(({ uid, role }) => {
-                          const auditor = auditors.find((a) => a.id === uid);
-                          if (!auditor) return null;
-                          return (
-                            <div key={uid} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5">
-                              <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />
-                              <span className="text-xs text-slate-700 flex-1 truncate">{auditor.nama_lengkap}</span>
-                              <span className="text-[10px] text-slate-400 hidden sm:inline">{role}</span>
-                              <input
-                                type="number"
-                                min={0}
-                                value={form.team_alokasi[uid] ?? ''}
-                                onChange={(e) => setForm((f) => ({
-                                  ...f,
-                                  team_alokasi: { ...f.team_alokasi, [uid]: e.target.value },
-                                }))}
-                                placeholder={String(estimasi_hari || 0)}
-                                className="w-20 px-2 py-1 text-xs border border-slate-200 rounded text-right focus:outline-none focus:ring-1 focus:ring-primary-300"
-                              />
-                              <span className="text-[10px] text-slate-400">hari</span>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </section>
 
@@ -807,7 +950,7 @@ const { data: riskRes } = useQuery({
             )}
           </div>
 
-          <div className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
+          <div className="px-4 sm:px-6 py-4 border-t border-slate-100 flex-shrink-0">
             {overworkAlerts.length > 0 && (
               <div className="mb-3 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />

@@ -15,8 +15,8 @@ const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'risk',       label: 'Data Risiko',          icon: BarChart2    },
   { id: 'mandays',    label: 'Man-Days',             icon: CalendarDays },
   { id: 'program',    label: 'Program Kerja',        icon: FileText     },
-  { id: 'workload',   label: 'Beban Kerja Auditor',  icon: Users        },
-  { id: 'evaluation', label: 'Penilaian Auditor',    icon: Award        },
+  { id: 'workload',   label: 'Beban Kerja Individu',  icon: Users        },
+  { id: 'evaluation', label: 'Penilaian Individu',    icon: Award        },
 ];
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -88,11 +88,11 @@ export default function PKPTPage() {
         </div>
 
         {/* Baris Bawah: Underline Tabs */}
-        <div className="flex gap-8 border-b border-slate-200">
+        <div className="flex gap-4 sm:gap-8 border-b border-slate-200 overflow-x-auto no-scrollbar -mx-5 px-5 sm:mx-0 sm:px-0">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
-            
+
             return (
               <button
                 key={tab.id}
@@ -101,7 +101,7 @@ export default function PKPTPage() {
                   next.set('tab', tab.id);
                   setSearchParams(next, { replace: true });
                 }}
-                className={`group relative flex items-center gap-2.5 pb-3.5 px-1 border-b-2 text-sm font-bold transition-all duration-200 ${
+                className={`group relative flex items-center gap-2.5 pb-3.5 px-1 border-b-2 text-sm font-bold transition-all duration-200 whitespace-nowrap flex-shrink-0 ${
                   isActive
                     ? 'border-primary-600 text-primary-700'
                     : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'

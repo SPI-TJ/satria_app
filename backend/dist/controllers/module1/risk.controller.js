@@ -65,6 +65,9 @@ const RISK_LIST_COLS = `
   r.penyebab_internal, r.penyebab_eksternal,
   r.sasaran_bidang, r.sasaran_korporat_id,
   COALESCE(sk.nama, r.sasaran_korporat_nama) AS sasaran_korporat_nama,
+  -- House of Strategy
+  r.hos_kategori_id,      hk.kode AS hos_kategori_kode, hk.nama_perspektif AS hos_kategori_nama,
+  r.sasaran_strategis_id, ss.kode AS sasaran_strategis_kode, ss.nama AS sasaran_strategis_nama,
   l.label       AS label_inherent,
   l.warna_bg    AS bg_inherent,
   l.warna_text  AS text_inherent,
@@ -75,11 +78,13 @@ const RISK_JOINS = `
   LEFT JOIN master.divisi           dv ON dv.id = r.divisi_id
   LEFT JOIN master.departemen       dp ON dp.id = r.departemen_id
   LEFT JOIN master.sasaran_korporat sk ON sk.id = r.sasaran_korporat_id
+  LEFT JOIN master.house_of_strategy_kategori hk ON hk.id = r.hos_kategori_id
+  LEFT JOIN master.sasaran_strategis          ss ON ss.id = r.sasaran_strategis_id
   LEFT JOIN master.risk_level_ref   l  ON l.kode = r.level_inherent`;
 // ── GET /api/risks ────────────────────────────────────────────
 async function getRisks(req, res) {
     try {
-        const { search, tahun = new Date().getFullYear(), direktorat_id, divisi_id, level_inherent, page = '1', limit = '20', } = req.query;
+        const { search, tahun = new Date().getFullYear(), direktorat_id, divisi_id, level_inherent, hos_kategori_id, sasaran_strategis_id, page = '1', limit = '20', } = req.query;
         const params = [Number(tahun)];
         const conds = ['r.deleted_at IS NULL', 'r.tahun = $1'];
         if (search) {
@@ -97,6 +102,14 @@ async function getRisks(req, res) {
         if (level_inherent) {
             params.push(level_inherent);
             conds.push(`r.level_inherent = $${params.length}`);
+        }
+        if (hos_kategori_id) {
+            params.push(hos_kategori_id);
+            conds.push(`r.hos_kategori_id = $${params.length}`);
+        }
+        if (sasaran_strategis_id) {
+            params.push(sasaran_strategis_id);
+            conds.push(`r.sasaran_strategis_id = $${params.length}`);
         }
         const where = conds.join(' AND ');
         const pg = Math.max(1, Number(page));
@@ -169,7 +182,7 @@ async function createRisk(req, res) {
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
-        const { id_risiko, tahun, direktorat_id, divisi_id, departemen_id, sasaran_korporat_id, sasaran_bidang, nama_risiko, parameter_kemungkinan, tingkat_risiko_inherent, tingkat_risiko_target, pelaksanaan_mitigasi, realisasi_tingkat_risiko, penyebab_internal, penyebab_eksternal, } = req.body;
+        const { id_risiko, tahun, direktorat_id, divisi_id, departemen_id, sasaran_korporat_id, sasaran_bidang, hos_kategori_id, sasaran_strategis_id, nama_risiko, parameter_kemungkinan, tingkat_risiko_inherent, tingkat_risiko_target, pelaksanaan_mitigasi, realisasi_tingkat_risiko, penyebab_internal, penyebab_eksternal, } = req.body;
         if (!nama_risiko || !tahun) {
             return res.status(400).json({
                 success: false,
@@ -188,6 +201,7 @@ async function createRisk(req, res) {
          direktorat_id, divisi_id, departemen_id,
          direktorat_nama, divisi_nama, departemen_nama,
          sasaran_korporat_id, sasaran_korporat_nama, sasaran_bidang,
+         hos_kategori_id, sasaran_strategis_id,
          nama_risiko, parameter_kemungkinan,
          tingkat_risiko_inherent, skor_inherent, level_inherent,
          tingkat_risiko_target,   skor_target,   level_target,
@@ -197,8 +211,8 @@ async function createRisk(req, res) {
          source, imported_by
        ) VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-         $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
-         'Manual',$26
+         $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,
+         'Manual',$28
        )
        ON CONFLICT (id_risiko, tahun) DO UPDATE SET
          direktorat_id           = EXCLUDED.direktorat_id,
@@ -210,6 +224,8 @@ async function createRisk(req, res) {
          sasaran_korporat_id     = EXCLUDED.sasaran_korporat_id,
          sasaran_korporat_nama   = EXCLUDED.sasaran_korporat_nama,
          sasaran_bidang          = EXCLUDED.sasaran_bidang,
+         hos_kategori_id         = EXCLUDED.hos_kategori_id,
+         sasaran_strategis_id    = EXCLUDED.sasaran_strategis_id,
          nama_risiko             = EXCLUDED.nama_risiko,
          parameter_kemungkinan   = EXCLUDED.parameter_kemungkinan,
          tingkat_risiko_inherent = EXCLUDED.tingkat_risiko_inherent,
@@ -230,6 +246,7 @@ async function createRisk(req, res) {
             direktorat_id || null, divisi_id || null, departemen_id || null,
             orgNames.dir, orgNames.div, orgNames.dep,
             sasaran_korporat_id || null, skName, sasaran_bidang || null,
+            hos_kategori_id || null, sasaran_strategis_id || null,
             nama_risiko, parameter_kemungkinan || null,
             tingkat_risiko_inherent || null, skor_i, level_i,
             tingkat_risiko_target || null, skor_t, level_t,
@@ -270,7 +287,7 @@ async function updateRisk(req, res) {
         if (!existing.rows[0]) {
             return res.status(404).json({ success: false, message: 'Risiko tidak ditemukan.' });
         }
-        const { direktorat_id, divisi_id, departemen_id, sasaran_korporat_id, sasaran_bidang, nama_risiko, parameter_kemungkinan, tingkat_risiko_inherent, tingkat_risiko_target, pelaksanaan_mitigasi, realisasi_tingkat_risiko, penyebab_internal, penyebab_eksternal, } = req.body;
+        const { direktorat_id, divisi_id, departemen_id, sasaran_korporat_id, sasaran_bidang, hos_kategori_id, sasaran_strategis_id, nama_risiko, parameter_kemungkinan, tingkat_risiko_inherent, tingkat_risiko_target, pelaksanaan_mitigasi, realisasi_tingkat_risiko, penyebab_internal, penyebab_eksternal, } = req.body;
         const [skor_i, level_i] = parseScore(tingkat_risiko_inherent);
         const [skor_t, level_t] = parseScore(tingkat_risiko_target);
         const [skor_r, level_r] = parseScore(realisasi_tingkat_risiko);
@@ -286,25 +303,28 @@ async function updateRisk(req, res) {
          sasaran_korporat_id     = COALESCE($7,  sasaran_korporat_id),
          sasaran_korporat_nama   = COALESCE($8,  sasaran_korporat_nama),
          sasaran_bidang          = COALESCE($9,  sasaran_bidang),
-         nama_risiko             = COALESCE($10, nama_risiko),
-         parameter_kemungkinan   = COALESCE($11, parameter_kemungkinan),
-         tingkat_risiko_inherent = COALESCE($12, tingkat_risiko_inherent),
-         skor_inherent           = COALESCE($13, skor_inherent),
-         level_inherent          = COALESCE($14, level_inherent),
-         tingkat_risiko_target   = COALESCE($15, tingkat_risiko_target),
-         skor_target             = COALESCE($16, skor_target),
-         level_target            = COALESCE($17, level_target),
-         pelaksanaan_mitigasi    = COALESCE($18, pelaksanaan_mitigasi),
-         realisasi_tingkat_risiko= COALESCE($19, realisasi_tingkat_risiko),
-         skor_realisasi          = COALESCE($20, skor_realisasi),
-         level_realisasi         = COALESCE($21, level_realisasi),
-         penyebab_internal       = COALESCE($22, penyebab_internal),
-         penyebab_eksternal      = COALESCE($23, penyebab_eksternal),
+         hos_kategori_id         = COALESCE($10, hos_kategori_id),
+         sasaran_strategis_id    = COALESCE($11, sasaran_strategis_id),
+         nama_risiko             = COALESCE($12, nama_risiko),
+         parameter_kemungkinan   = COALESCE($13, parameter_kemungkinan),
+         tingkat_risiko_inherent = COALESCE($14, tingkat_risiko_inherent),
+         skor_inherent           = COALESCE($15, skor_inherent),
+         level_inherent          = COALESCE($16, level_inherent),
+         tingkat_risiko_target   = COALESCE($17, tingkat_risiko_target),
+         skor_target             = COALESCE($18, skor_target),
+         level_target            = COALESCE($19, level_target),
+         pelaksanaan_mitigasi    = COALESCE($20, pelaksanaan_mitigasi),
+         realisasi_tingkat_risiko= COALESCE($21, realisasi_tingkat_risiko),
+         skor_realisasi          = COALESCE($22, skor_realisasi),
+         level_realisasi         = COALESCE($23, level_realisasi),
+         penyebab_internal       = COALESCE($24, penyebab_internal),
+         penyebab_eksternal      = COALESCE($25, penyebab_eksternal),
          updated_at              = NOW()
-       WHERE id = $24 AND deleted_at IS NULL`, [
+       WHERE id = $26 AND deleted_at IS NULL`, [
             direktorat_id || null, divisi_id || null, departemen_id || null,
             orgNames.dir, orgNames.div, orgNames.dep,
             sasaran_korporat_id || null, skName, sasaran_bidang || null,
+            hos_kategori_id || null, sasaran_strategis_id || null,
             nama_risiko || null, parameter_kemungkinan || null,
             tingkat_risiko_inherent || null, skor_i, level_i,
             tingkat_risiko_target || null, skor_t, level_t,

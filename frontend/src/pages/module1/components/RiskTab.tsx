@@ -295,7 +295,7 @@ export default function RiskTab({ tahun }: Props) {
             >
               <option value="">Semua Perspektif</option>
               {hosKategoris.map((h) => (
-                <option key={h.id} value={h.id}>{h.kode} — {h.nama_perspektif}</option>
+                <option key={h.id} value={h.id}>{h.nama_perspektif}</option>
               ))}
             </select>
           </div>
@@ -385,7 +385,7 @@ export default function RiskTab({ tahun }: Props) {
             {hosKategoriId && (
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-full text-xs">
                 <span className="text-indigo-700 font-medium">
-                  HoS: {hosKategoris.find(h => h.id === hosKategoriId)?.kode}
+                  HoS: {hosKategoris.find(h => h.id === hosKategoriId)?.nama_perspektif}
                 </span>
                 <button
                   onClick={() => handleFilterChange('hos', '')}
@@ -421,7 +421,7 @@ export default function RiskTab({ tahun }: Props) {
       ) : (
         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[900px] text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-5 py-3 text-left font-semibold text-slate-700">ID Risiko</th>
@@ -452,17 +452,15 @@ export default function RiskTab({ tahun }: Props) {
                       />
                     </td>
                     <td className="px-5 py-4 text-xs">
-                      {r.hos_kategori_kode ? (
+                      {r.hos_kategori_nama ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold">
-                          {r.hos_kategori_kode}
-                          {r.hos_kategori_nama && <span className="font-normal opacity-75 hidden lg:inline">— {r.hos_kategori_nama}</span>}
+                          {r.hos_kategori_nama}
                         </span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-5 py-4 text-xs max-w-[200px]">
                       {r.sasaran_strategis_nama ? (
                         <p className="text-slate-700 line-clamp-2" title={r.sasaran_strategis_nama}>
-                          {r.sasaran_strategis_kode && <span className="font-mono text-slate-500 mr-1">{r.sasaran_strategis_kode}</span>}
                           {r.sasaran_strategis_nama}
                         </p>
                       ) : <span className="text-slate-300">—</span>}

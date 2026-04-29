@@ -10,12 +10,12 @@
  * 3. Bobot Peran         → bobot Man-Days per peran
  * 4. Tipe Penugasan      → sub-kategori program
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layers, Target, Scale, Tags, Calendar, ChevronDown, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
-  settingsApi, HosKategori, SasaranStrategis, BobotPeran, TipePenugasan,
+  settingsApi, HosKategori, SasaranStrategis, BobotPeran, KelompokPenugasan,
 } from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
 
@@ -28,7 +28,7 @@ const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'hos',     label: 'House of Strategy', icon: Layers },
   { id: 'sasaran', label: 'Sasaran Strategis', icon: Target },
   { id: 'bobot',   label: 'Bobot Peran',       icon: Scale  },
-  { id: 'tipe',    label: 'Tipe Penugasan',    icon: Tags   },
+  { id: 'tipe',    label: 'Kelompok Penugasan', icon: Tags   },
 ];
 
 export default function PengaturanSistemPage() {
@@ -146,7 +146,7 @@ export default function PengaturanSistemPage() {
         {activeTab === 'hos'     && <HosTab tahun={tahun} />}
         {activeTab === 'sasaran' && <SasaranTab tahun={tahun} />}
         {activeTab === 'bobot'   && <BobotTab tahun={tahun} />}
-        {activeTab === 'tipe'    && <TipeTab />}
+        {activeTab === 'tipe'    && <KelompokTab />}
       </div>
       
     </div>
@@ -488,52 +488,68 @@ function BobotTab({ tahun }: { tahun: number }) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  TAB 4: TIPE PENUGASAN
+//  TAB 4: KELOMPOK PENUGASAN — master generik
+//  Tipe pengelompokan default: Kategori, Sifat Program,
+//  Kategori Anggaran. Admin bisa menambah tipe baru bebas.
 // ════════════════════════════════════════════════════════════
-const KATEGORI_PROGRAM_OPTIONS = ['Assurance', 'Non Assurance', 'Pemantauan Risiko', 'Evaluasi'];
+const TIPE_BUILT_IN = ['Kategori', 'Sifat Program', 'Kategori Anggaran'];
 
-function TipeTab() {
+function KelompokTab() {
   const role = useAuthStore((s) => s.user?.role);
   const canEdit = role === 'kepala_spi' || role === 'admin_spi';
   const qc = useQueryClient();
   const [filter, setFilter] = useState('');
-  const [editing, setEditing] = useState<Partial<TipePenugasan> | null>(null);
+  const [editing, setEditing] = useState<Partial<KelompokPenugasan> | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['tipe-penugasan', filter],
-    queryFn: () => settingsApi.getTipePenugasan(filter || undefined).then((r) => r.data.data ?? []),
+    queryKey: ['kelompok-penugasan', filter],
+    queryFn: () => settingsApi.getKelompokPenugasan(filter || undefined).then((r) => r.data.data ?? []),
   });
 
+  // Daftar tipe yang ada di data + built-in (untuk dropdown filter & form)
+  const tipeOptions = useMemo(() => {
+    const set = new Set<string>([...TIPE_BUILT_IN, ...((data ?? []).map((d) => d.tipe))]);
+    return Array.from(set);
+  }, [data]);
+
   const createMut = useMutation({
-    mutationFn: settingsApi.createTipePenugasan,
-    onSuccess: () => { toast.success('Tipe ditambahkan'); qc.invalidateQueries({ queryKey: ['tipe-penugasan'] }); setEditing(null); },
+    mutationFn: settingsApi.createKelompokPenugasan,
+    onSuccess: () => { toast.success('Nilai ditambahkan'); qc.invalidateQueries({ queryKey: ['kelompok-penugasan'] }); setEditing(null); },
     onError: (e: { response?: { data?: { message?: string } } }) => toast.error(e?.response?.data?.message ?? 'Gagal'),
   });
   const updateMut = useMutation({
-    mutationFn: ({ id, ...p }: Partial<TipePenugasan> & { id: string }) => settingsApi.updateTipePenugasan(id, p),
-    onSuccess: () => { toast.success('Tersimpan'); qc.invalidateQueries({ queryKey: ['tipe-penugasan'] }); setEditing(null); },
+    mutationFn: ({ id, ...p }: Partial<KelompokPenugasan> & { id: string }) => settingsApi.updateKelompokPenugasan(id, p),
+    onSuccess: () => { toast.success('Tersimpan'); qc.invalidateQueries({ queryKey: ['kelompok-penugasan'] }); setEditing(null); },
+    onError: (e: { response?: { data?: { message?: string } } }) => toast.error(e?.response?.data?.message ?? 'Gagal'),
   });
   const deleteMut = useMutation({
-    mutationFn: settingsApi.deleteTipePenugasan,
-    onSuccess: () => { toast.success('Dihapus'); qc.invalidateQueries({ queryKey: ['tipe-penugasan'] }); },
+    mutationFn: settingsApi.deleteKelompokPenugasan,
+    onSuccess: () => { toast.success('Dihapus'); qc.invalidateQueries({ queryKey: ['kelompok-penugasan'] }); },
   });
 
   return (
     <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
+        💡 Master ini menyimpan nilai-nilai untuk pengelompokan program kerja
+        (mis. <b>Kategori</b>: Assurance/Non Assurance, <b>Sifat Program</b>: Mandatory/Strategis,
+        <b> Kategori Anggaran</b>: Subsidi/Non Subsidi). Tambah tipe baru kapan saja jika dibutuhkan
+        klasifikasi lain.
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-slate-500">Filter Kategori</label>
+          <label className="text-xs font-semibold text-slate-500">Filter Tipe</label>
           <select value={filter} onChange={(e) => setFilter(e.target.value)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white">
             <option value="">Semua</option>
-            {KATEGORI_PROGRAM_OPTIONS.map((k) => <option key={k} value={k}>{k}</option>)}
+            {tipeOptions.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         </div>
         {canEdit && (
           <button
-            onClick={() => setEditing({ kategori_program: filter || 'Assurance', kode: '', nama: '', urutan: 0 })}
+            onClick={() => setEditing({ tipe: filter || 'Kategori', nilai: '', urutan: 0 })}
             className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700"
           >
-            + Tambah Tipe
+            + Tambah Nilai
           </button>
         )}
       </div>
@@ -542,27 +558,25 @@ function TipeTab() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
             <tr>
-              <th className="px-4 py-3 text-left">Kategori</th>
-              <th className="px-4 py-3 text-left">Kode</th>
-              <th className="px-4 py-3 text-left">Nama</th>
-              <th className="px-4 py-3 text-left">Default Hari</th>
+              <th className="px-4 py-3 text-left">Tipe</th>
+              <th className="px-4 py-3 text-left">Nilai</th>
+              <th className="px-4 py-3 text-left">Urutan</th>
               <th className="px-4 py-3 text-left">Status</th>
               {canEdit && <th className="px-4 py-3 text-right">Aksi</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {isLoading && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Memuat...</td></tr>}
+            {isLoading && <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">Memuat...</td></tr>}
             {!isLoading && (data ?? []).length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Belum ada tipe penugasan.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400">Belum ada nilai.</td></tr>
             )}
             {(data ?? []).map((t) => (
               <tr key={t.id}>
                 <td className="px-4 py-3">
-                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-xs font-medium">{t.kategori_program}</span>
+                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-xs font-medium">{t.tipe}</span>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{t.kode}</td>
-                <td className="px-4 py-3 font-medium">{t.nama}</td>
-                <td className="px-4 py-3">{t.default_hari ?? '-'}</td>
+                <td className="px-4 py-3 font-medium">{t.nilai}</td>
+                <td className="px-4 py-3 text-slate-500">{t.urutan}</td>
                 <td className="px-4 py-3">
                   {t.is_active
                     ? <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs">Aktif</span>
@@ -571,7 +585,7 @@ function TipeTab() {
                 {canEdit && (
                   <td className="px-4 py-3 text-right space-x-2">
                     <button onClick={() => setEditing(t)} className="text-primary-600 hover:underline text-xs font-medium">Edit</button>
-                    <button onClick={() => { if (confirm(`Hapus ${t.nama}?`)) deleteMut.mutate(t.id); }} className="text-red-600 hover:underline text-xs font-medium">Hapus</button>
+                    <button onClick={() => { if (confirm(`Hapus ${t.nilai}?`)) deleteMut.mutate(t.id); }} className="text-red-600 hover:underline text-xs font-medium">Hapus</button>
                   </td>
                 )}
               </tr>
@@ -582,26 +596,28 @@ function TipeTab() {
 
       {editing && (
         <FormModal
-          title={editing.id ? 'Edit Tipe Penugasan' : 'Tambah Tipe Penugasan'}
+          title={editing.id ? 'Edit Nilai' : 'Tambah Nilai'}
           onClose={() => setEditing(null)}
           onSubmit={() => editing.id
             ? updateMut.mutate({ ...editing, id: editing.id! })
             : createMut.mutate(editing)}
           loading={createMut.isPending || updateMut.isPending}
         >
-          <FormRow label="Kategori Program" required>
-            <select className="input" value={editing.kategori_program ?? ''} onChange={(e) => setEditing({ ...editing, kategori_program: e.target.value })}>
-              {KATEGORI_PROGRAM_OPTIONS.map((k) => <option key={k} value={k}>{k}</option>)}
-            </select>
+          <FormRow label="Tipe" required>
+            <input
+              className="input"
+              list="tipe-options"
+              value={editing.tipe ?? ''}
+              onChange={(e) => setEditing({ ...editing, tipe: e.target.value })}
+              placeholder="Kategori | Sifat Program | Kategori Anggaran | (custom)"
+            />
+            <datalist id="tipe-options">
+              {tipeOptions.map((t) => <option key={t} value={t} />)}
+            </datalist>
+            <p className="mt-1 text-[11px] text-slate-400">Pilih tipe yang ada atau ketik tipe baru untuk membuat dimensi pengelompokan baru.</p>
           </FormRow>
-          <FormRow label="Kode" required>
-            <input className="input" value={editing.kode ?? ''} onChange={(e) => setEditing({ ...editing, kode: e.target.value })} placeholder="AUDIT" />
-          </FormRow>
-          <FormRow label="Nama" required>
-            <input className="input" value={editing.nama ?? ''} onChange={(e) => setEditing({ ...editing, nama: e.target.value })} placeholder="Audit" />
-          </FormRow>
-          <FormRow label="Default Hari">
-            <input type="number" className="input" value={editing.default_hari ?? ''} onChange={(e) => setEditing({ ...editing, default_hari: e.target.value === '' ? null : Number(e.target.value) })} />
+          <FormRow label="Nilai" required>
+            <input className="input" value={editing.nilai ?? ''} onChange={(e) => setEditing({ ...editing, nilai: e.target.value })} placeholder="cth: Assurance / Mandatory / Subsidi" />
           </FormRow>
           <FormRow label="Urutan">
             <input type="number" className="input" value={editing.urutan ?? 0} onChange={(e) => setEditing({ ...editing, urutan: Number(e.target.value) })} />

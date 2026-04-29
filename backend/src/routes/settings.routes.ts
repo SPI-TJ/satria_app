@@ -17,7 +17,7 @@ import {
   getHosKategoris, createHosKategori, updateHosKategori, deleteHosKategori,
   getSasaranStrategis, createSasaranStrategis, updateSasaranStrategis, deleteSasaranStrategis,
   getBobotPeran, upsertBobotPeran,
-  getTipePenugasan, createTipePenugasan, updateTipePenugasan, deleteTipePenugasan,
+  getKelompokPenugasan, createKelompokPenugasan, updateKelompokPenugasan, deleteKelompokPenugasan,
 } from '../controllers/settings.controller';
 
 const router = Router();
@@ -41,10 +41,10 @@ router.delete('/settings/sasaran-strategis/:id', authenticate, allSpi, deleteSas
 router.get  ('/settings/bobot-peran', authenticate, getBobotPeran);
 router.put  ('/settings/bobot-peran', authenticate, adminOnly, upsertBobotPeran);
 
-// ── Tipe Penugasan ───────────────────────────────────────────
-router.get   ('/settings/tipe-penugasan',     authenticate, getTipePenugasan);
-router.post  ('/settings/tipe-penugasan',     authenticate, adminOnly, createTipePenugasan);
-router.patch ('/settings/tipe-penugasan/:id', authenticate, adminOnly, updateTipePenugasan);
-router.delete('/settings/tipe-penugasan/:id', authenticate, adminOnly, deleteTipePenugasan);
+// ── Kelompok Penugasan (Kategori, Sifat Program, Kategori Anggaran, dll) ─
+router.get   ('/settings/kelompok-penugasan',     authenticate, getKelompokPenugasan);
+router.post  ('/settings/kelompok-penugasan',     authenticate, adminOnly, createKelompokPenugasan);
+router.patch ('/settings/kelompok-penugasan/:id', authenticate, adminOnly, updateKelompokPenugasan);
+router.delete('/settings/kelompok-penugasan/:id', authenticate, adminOnly, deleteKelompokPenugasan);
 
 export default router;

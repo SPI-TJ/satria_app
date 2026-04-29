@@ -119,8 +119,9 @@ export interface Notification {
 // ── Annual Audit Plans ───────────────────────────────────────
 export type StatusPKPT     = 'Open' | 'On Progress' | 'Closed';
 export type JenisProgram   = 'PKPT' | 'Non PKPT';
-export type KategoriProgram = 'Assurance' | 'Non Assurance' | 'Pemantauan Risiko' | 'Evaluasi';
-export type StatusProgram  = 'Mandatory' | 'Strategis' | 'Emerging Risk';
+// Free text — daftar nilai dikelola di master.kelompok_penugasan.
+export type KategoriProgram = string;
+export type StatusProgram   = string;
 
 export interface AnnualAuditPlan {
   id:                string;

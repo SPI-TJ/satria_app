@@ -109,13 +109,13 @@ export default function RiskDetailModal({ risk, onClose, onEdit }: Props) {
                   {risk.hos_kategori_nama && (
                     <InfoRow
                       label="Perspektif HoS"
-                      value={`${risk.hos_kategori_kode ?? ''}${risk.hos_kategori_kode ? ' — ' : ''}${risk.hos_kategori_nama}`}
+                      value={risk.hos_kategori_nama}
                     />
                   )}
                   {risk.sasaran_strategis_nama && (
                     <InfoRow
                       label="Sasaran Strategis"
-                      value={`${risk.sasaran_strategis_kode ? risk.sasaran_strategis_kode + ' — ' : ''}${risk.sasaran_strategis_nama}`}
+                      value={risk.sasaran_strategis_nama}
                     />
                   )}
                   {risk.sasaran_korporat && (
