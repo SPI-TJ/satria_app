@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 import {
-  X, Pencil, Users, CalendarDays, CheckCircle2, Clock,
+  X, Pencil, Trash2, CheckCircle2, Users, CalendarDays, Clock,
   AlertCircle, Loader2, ShieldCheck, Building2,
 } from 'lucide-react';
 import { annualPlansApi, settingsApi } from '../../../services/api';
@@ -12,6 +12,8 @@ interface Props {
   programId: string;
   onClose: () => void;
   onEdit?: (plan: AnnualAuditPlan) => void;
+  onFinalize?: (id: string) => void;
+  onDelete?: (plan: AnnualAuditPlan) => void;
 }
 
 const LEVEL_BADGE: Record<RiskLevelKode, string> = {
@@ -25,7 +27,6 @@ const LEVEL_BADGE: Record<RiskLevelKode, string> = {
 
 function parseAuditeeGroups(auditee?: string | null) {
   if (!auditee) return [];
-
   return auditee
     .split(';')
     .map((part) => part.trim())
@@ -34,10 +35,7 @@ function parseAuditeeGroups(auditee?: string | null) {
       const [divisi, departments] = part.split(':');
       return {
         divisi: departments ? divisi.trim() : 'Auditee',
-        departments: (departments ?? divisi)
-          .split(',')
-          .map((dept) => dept.trim())
-          .filter(Boolean),
+        departments: (departments ?? divisi).split(',').map((dept) => dept.trim()).filter(Boolean),
       };
     });
 }
@@ -46,9 +44,8 @@ function countAuditeeDepartments(groups: ReturnType<typeof parseAuditeeGroups>) 
   return groups.reduce((sum, group) => sum + group.departments.length, 0);
 }
 
-export default function ProgramDetailModal({ programId, onClose, onEdit }: Props) {
-  
-  const { data: plan, isLoading, isError, error, refetch, isFetching } = useQuery({
+export default function ProgramDetailModal({ programId, onClose, onEdit, onFinalize, onDelete }: Props) {
+  const { data: plan, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['annual-plan-detail', programId],
     queryFn: async () => {
       const res = await annualPlansApi.getById(programId);
@@ -67,47 +64,51 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
     return parsed.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
-  const auditeeGroups = parseAuditeeGroups(plan?.auditee);
+  const auditeeGroups          = parseAuditeeGroups(plan?.auditee);
   const auditeeDepartmentCount = countAuditeeDepartments(auditeeGroups);
   const hariPenugasan = plan
     ? (plan.team?.find((member) => member.hari_alokasi != null)?.hari_alokasi ?? plan.estimasi_hari ?? 0)
     : 0;
 
-  // Bobot peran tahun program → untuk hitung man-days per personil
   const tahunProgram = plan?.tahun_perencanaan
     ? new Date(plan.tahun_perencanaan).getFullYear()
     : new Date().getFullYear();
+
   const { data: bobotPeranList } = useQuery({
     queryKey: ['bobot-peran', tahunProgram],
     queryFn: () => settingsApi.getBobotPeran(tahunProgram).then((r) => r.data.data ?? []),
     enabled: !!plan,
     staleTime: 5 * 60_000,
   });
+
   const bobotByRoleTim = useMemo(() => {
     const map: Record<string, number> = {};
     (bobotPeranList ?? []).forEach((b) => { map[b.peran] = Number(b.bobot); });
     return map;
   }, [bobotPeranList]);
 
-  // Hitung man-days per personil & breakdown per role tim
   const memberMandays = useMemo(() => {
     if (!plan?.team) return new Map<string, number>();
     const m = new Map<string, number>();
     plan.team.forEach((mb) => {
-      const hari = Number(mb.hari_alokasi ?? hariPenugasan ?? 0);
+      const hari  = Number(mb.hari_alokasi ?? hariPenugasan ?? 0);
       const bobot = bobotByRoleTim[mb.role_tim] ?? 0;
       m.set(mb.id, Number((hari * bobot).toFixed(2)));
     });
     return m;
   }, [plan?.team, bobotByRoleTim, hariPenugasan]);
 
+  const canFinalize = onFinalize && plan && plan.status_pkpt !== 'Closed';
+  const canEdit     = onEdit && plan && plan.status_pkpt !== 'Closed';
+  const canDelete   = onDelete && plan && plan.status_pkpt === 'Open';
 
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
         <div className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden">
-          
+
+          {/* ── Header ── */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 flex-shrink-0">
             {isLoading ? (
               <div className="space-y-2 flex-1">
@@ -117,10 +118,10 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
             ) : (
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold border ${plan?.jenis_program === 'PKPT' ? 'bg-primary-50 text-primary-700 border-primary-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
+                  <span className={`badge border ${plan?.jenis_program === 'PKPT' ? 'bg-primary-50 text-primary-700 border-primary-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
                     {plan?.jenis_program}
                   </span>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                  <span className={`badge ${
                     plan?.status_pkpt === 'Closed'
                       ? 'bg-green-50 text-green-700 border border-green-200'
                       : plan?.status_pkpt === 'On Progress'
@@ -135,11 +136,12 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
                 <p className="text-xs text-slate-400 mt-0.5">{plan?.kategori_program} · {plan?.status_program} · Tahun {plan?.tahun}</p>
               </div>
             )}
-            <button type="button" onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors flex-shrink-0">
+            <button type="button" onClick={onClose} className="btn-icon text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex-shrink-0">
               <X className="w-4 h-4" />
             </button>
           </div>
 
+          {/* ── Body ── */}
           <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-5 space-y-5">
             {isLoading ? (
               <div className="space-y-3">
@@ -150,7 +152,7 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
               <div className="text-center py-8">
                 <AlertCircle className="w-10 h-10 text-red-300 mx-auto mb-2" />
                 <p className="text-slate-500 text-sm">Gagal memuat detail program.</p>
-                <button onClick={() => refetch()} disabled={isFetching} className="mt-3 btn-secondary text-xs">Coba lagi</button>
+                <button onClick={() => refetch()} disabled={isFetching} className="btn-secondary text-xs mt-3">Coba lagi</button>
               </div>
             ) : !plan ? (
               <div className="text-center py-8">
@@ -159,22 +161,22 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2 bg-primary-50 rounded-xl p-4 flex items-center gap-4 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <CalendarDays className="w-4 h-4 text-primary-600" />
-                      <div>
-                        <p className="text-xs text-primary-500 font-medium">Periode</p>
-                        <p className="text-sm font-bold text-primary-800">{fmtDate(plan.tanggal_mulai)} — {fmtDate(plan.tanggal_selesai)}</p>
-                      </div>
+                {/* Periode banner */}
+                <div className="col-span-2 bg-primary-50 rounded-xl p-4 flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4 text-primary-600" />
+                    <div>
+                      <p className="text-xs text-primary-500 font-medium">Periode</p>
+                      <p className="text-sm font-bold text-primary-800">{fmtDate(plan.tanggal_mulai)} — {fmtDate(plan.tanggal_selesai)}</p>
                     </div>
-                    <div className="ml-auto text-right">
-                      <p className="text-xs text-primary-500 font-medium">Hari Penugasan</p>
-                      <p className="text-2xl font-black text-primary-700">{hariPenugasan} <span className="text-sm font-semibold ml-1">hari</span></p>
-                    </div>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <p className="text-xs text-primary-500 font-medium">Hari Penugasan</p>
+                    <p className="text-2xl font-black text-primary-700">{hariPenugasan} <span className="text-sm font-semibold ml-1">hari</span></p>
                   </div>
                 </div>
 
+                {/* Auditee */}
                 <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
@@ -182,37 +184,28 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
                         <Building2 className="h-4 w-4" />
                       </div>
                       <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Auditee</p>
+                        <p className="section-label">Auditee</p>
                         <p className="text-sm font-semibold text-slate-800">Unit yang menjadi objek audit</p>
                       </div>
                     </div>
                     {auditeeGroups.length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700">
-                          {auditeeGroups.length} divisi
-                        </span>
-                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
-                          {auditeeDepartmentCount} departemen
-                        </span>
+                        <span className="badge bg-primary-50 border border-primary-200 text-primary-700">{auditeeGroups.length} divisi</span>
+                        <span className="badge bg-white border border-slate-200 text-slate-600">{auditeeDepartmentCount} departemen</span>
                       </div>
                     )}
                   </div>
-
                   {auditeeGroups.length > 0 ? (
                     <div className="divide-y divide-slate-100">
                       {auditeeGroups.map((group) => (
                         <div key={`${group.divisi}-${group.departments.join('-')}`} className="grid gap-2 px-4 py-3 sm:grid-cols-[190px_1fr] sm:gap-4">
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-slate-700">{group.divisi}</p>
-                            <p className="text-[11px] font-medium text-slate-400">
-                              {group.departments.length} departemen
-                            </p>
+                            <p className="text-[11px] font-medium text-slate-400">{group.departments.length} departemen</p>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {group.departments.map((dept) => (
-                              <span key={dept} className="inline-flex max-w-full items-center rounded-md border border-primary-100 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
-                                {dept}
-                              </span>
+                              <span key={dept} className="badge bg-primary-50 border border-primary-100 text-primary-700">{dept}</span>
                             ))}
                           </div>
                         </div>
@@ -223,36 +216,28 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
                   )}
                 </div>
 
-                {/* ── Anggaran & Man-Days (Fase 5) ───────── */}
-                {(plan.anggaran != null
-                  || plan.man_days_terpakai != null
-                  || plan.kategori_anggaran) && (
+                {/* Anggaran & Man-Days */}
+                {(plan.anggaran != null || plan.man_days_terpakai != null || plan.kategori_anggaran) && (
                   <div className="border-t border-slate-100 pt-4">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Anggaran & Man-Days</p>
+                    <p className="section-label mb-3">Anggaran & Man-Days</p>
                     <div className="grid grid-cols-2 gap-4">
                       {plan.anggaran != null && (
                         <div>
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Anggaran</p>
-                          <p className="text-sm font-bold text-slate-800">
-                            Rp {Number(plan.anggaran).toLocaleString('id-ID')}
-                          </p>
+                          <p className="section-label mb-0.5">Anggaran</p>
+                          <p className="text-sm font-bold text-slate-800">Rp {Number(plan.anggaran).toLocaleString('id-ID')}</p>
                         </div>
                       )}
                       {plan.kategori_anggaran && (
                         <div>
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Kategori Anggaran</p>
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${
-                            plan.kategori_anggaran === 'Subsidi'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-slate-50 text-slate-700 border border-slate-200'
-                          }`}>
+                          <p className="section-label mb-0.5">Kategori Anggaran</p>
+                          <span className={`badge border ${plan.kategori_anggaran === 'Subsidi' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>
                             {plan.kategori_anggaran}
                           </span>
                         </div>
                       )}
                       {plan.man_days_terpakai != null && (
                         <div className="col-span-2">
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Man-Days Terpakai</p>
+                          <p className="section-label mb-0.5">Man-Days Terpakai</p>
                           <p className="text-sm font-bold text-primary-700">
                             {Number(plan.man_days_terpakai).toFixed(2)}
                             <span className="text-[11px] font-normal text-slate-400 ml-1.5">(auto-calc dari tim × hari penugasan × bobot peran)</span>
@@ -263,49 +248,48 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
                   </div>
                 )}
 
+                {/* Deskripsi */}
                 {plan.deskripsi && (
                   <div className="border-t border-slate-100 pt-4">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Deskripsi</p>
+                    <p className="section-label mb-2">Deskripsi</p>
                     <p className="text-sm text-slate-700 leading-relaxed">{plan.deskripsi}</p>
                   </div>
                 )}
 
+                {/* Tim Auditor */}
                 {plan.team && plan.team.length > 0 && (
                   <div className="border-t border-slate-100 pt-4">
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tim Auditor</p>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-primary-50 px-2.5 py-1 text-xs font-bold text-primary-700">
-                        <Users className="h-3.5 w-3.5" />
-                        {plan.team.length} personil
+                      <p className="section-label">Tim Auditor</p>
+                      <span className="badge bg-primary-50 border border-primary-100 text-primary-700">
+                        <Users className="h-3.5 w-3.5" /> {plan.team.length} personil
                       </span>
                     </div>
                     <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <div className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                      <div className="badge bg-slate-50 border border-slate-200 text-slate-600 py-2 px-3">
                         <CalendarDays className="h-3.5 w-3.5 text-primary-500" />
-                        Hari Penugasan: <span className="text-primary-700">{hariPenugasan} hari</span>
+                        Hari Penugasan: <span className="text-primary-700 font-bold">{hariPenugasan} hari</span>
                       </div>
                     </div>
-
                     <div className="space-y-2">
                       {plan.team.map((member) => {
-                        const mdMember = memberMandays.get(member.id) ?? 0;
+                        const mdMember   = memberMandays.get(member.id) ?? 0;
                         const bobotMember = bobotByRoleTim[member.role_tim];
-                        const hariMember = Number(member.hari_alokasi ?? hariPenugasan ?? 0);
+                        const hariMember  = Number(member.hari_alokasi ?? hariPenugasan ?? 0);
                         return (
                           <div key={member.id} className="flex items-center gap-3 px-3 py-2 bg-slate-50 rounded-lg">
-                            <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">{member.nama_lengkap.charAt(0)}</div>
+                            <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">
+                              {member.nama_lengkap.charAt(0)}
+                            </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-slate-800 truncate">{member.nama_lengkap}</p>
                               <p className="text-xs text-slate-400">{member.jabatan || member.role.replace('_', ' ')}</p>
                             </div>
                             <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${member.role_tim === 'Pengendali Teknis' ? 'bg-blue-50 text-blue-700' : member.role_tim === 'Ketua Tim' ? 'bg-primary-50 text-primary-700' : 'bg-slate-100 text-slate-600'}`}>
+                              <span className={`badge text-xs ${member.role_tim === 'Pengendali Teknis' ? 'bg-blue-50 text-blue-700' : member.role_tim === 'Ketua Tim' ? 'bg-primary-50 text-primary-700' : 'bg-slate-100 text-slate-600'}`}>
                                 {member.role_tim}
                               </span>
-                              <span
-                                className="text-[11px] font-semibold text-slate-700"
-                                title={`${hariMember} hari × bobot ${bobotMember ?? '?'} = ${mdMember.toFixed(2)} HP`}
-                              >
+                              <span className="text-[11px] font-semibold text-slate-700" title={`${hariMember} hari × bobot ${bobotMember ?? '?'} = ${mdMember.toFixed(2)} HP`}>
                                 {mdMember.toFixed(2)} <span className="text-[10px] font-normal text-slate-400">HP</span>
                               </span>
                             </div>
@@ -316,9 +300,10 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
                   </div>
                 )}
 
+                {/* Risiko Terkait */}
                 {plan.risks && plan.risks.length > 0 && (
                   <div className="border-t border-slate-100 pt-4">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Risiko Terkait ({plan.risks.length})</p>
+                    <p className="section-label mb-3">Risiko Terkait ({plan.risks.length})</p>
                     <div className="space-y-2">
                       {plan.risks.map((risk) => (
                         <div key={risk.id} className="flex items-start gap-3 px-3 py-2 bg-slate-50 rounded-lg">
@@ -326,7 +311,7 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
                               {risk.id_risiko && <span className="font-mono text-xs font-bold text-primary-600">{risk.id_risiko}</span>}
-                              {risk.level_inherent && <span className={`text-xs px-1.5 py-0 rounded-full font-medium ${LEVEL_BADGE[risk.level_inherent as RiskLevelKode] ?? 'bg-slate-100 text-slate-600'}`}>{risk.level_inherent}</span>}
+                              {risk.level_inherent && <span className={`badge ${LEVEL_BADGE[risk.level_inherent as RiskLevelKode] ?? 'bg-slate-100 text-slate-600'}`}>{risk.level_inherent}</span>}
                             </div>
                             <p className="text-xs text-slate-600 line-clamp-2">{risk.nama_risiko}</p>
                           </div>
@@ -339,13 +324,43 @@ export default function ProgramDetailModal({ programId, onClose, onEdit }: Props
             )}
           </div>
 
-          <div className="px-4 sm:px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 flex-shrink-0">
-            <button type="button" onClick={onClose} className="btn-secondary text-sm">Tutup</button>
-            {onEdit && plan && plan.status_pkpt !== 'Closed' && (
-              <button type="button" onClick={() => onEdit(plan as unknown as AnnualAuditPlan)} className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors">
-                <Pencil className="w-3.5 h-3.5" /> Edit Program
-              </button>
-            )}
+          {/* ── Footer ── */}
+          <div className="px-4 sm:px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3 flex-shrink-0">
+            {/* Left: destructive actions */}
+            <div className="flex items-center gap-2">
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete!(plan as unknown as AnnualAuditPlan)}
+                  className="btn-danger"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Hapus
+                </button>
+              )}
+            </div>
+
+            {/* Right: primary actions */}
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={onClose} className="btn-secondary">Tutup</button>
+              {canFinalize && (
+                <button
+                  type="button"
+                  onClick={() => onFinalize!(plan.id)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Tutup Program
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit!(plan as unknown as AnnualAuditPlan)}
+                  className="btn-primary"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit Program
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

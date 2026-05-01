@@ -178,7 +178,10 @@ export const organisasiApi = {
 
 // ── User Stats ────────────────────────────────────────────────
 export const userStatsApi = {
-  get: () => api.get<ApiResponse<{ total: number; aktif: number; non_aktif: number }>>('/users/stats'),
+  get: () => api.get<ApiResponse<{
+    total: number; aktif: number; non_aktif: number;
+    divisi_count: number; departemen_count: number;
+  }>>('/users/stats'),
 };
 
 // ── Jabatan (jabatan struktural — static list) ─────────────────
@@ -256,6 +259,14 @@ export interface CeoLetterHeader {
 }
 
 export type AreaPrioritas = 'Tinggi' | 'Sedang' | 'Rendah';
+export type CeoLetterTargetTipe = 'Direksi' | 'Komisaris';
+export type CeoLetterTargetUnit =
+  | 'Utama'
+  | 'Keuangan'
+  | 'Bisnis'
+  | 'Operasional'
+  | 'Teknologi Informasi'
+  | 'Komisaris';
 
 export interface CeoLetterArea {
   id?: string;
@@ -263,12 +274,19 @@ export interface CeoLetterArea {
   parameter: string;
   deskripsi: string | null;
   prioritas: AreaPrioritas;
+  target_tipe: CeoLetterTargetTipe;
+  target_unit: CeoLetterTargetUnit;
   urutan: number;
+}
+
+export interface CeoLetterDocument extends CeoLetterHeader {
+  areas: CeoLetterArea[];
 }
 
 export interface CeoLetterResponse {
   header: CeoLetterHeader | null;
   areas: CeoLetterArea[];
+  letters?: CeoLetterDocument[];
 }
 
 export const ceoLetterApi = {
@@ -283,14 +301,18 @@ export const ceoLetterApi = {
   upsert: (payload: {
     tahun: number;
     nomor_surat?: string | null;
+    id?: string | null;
+    create_new?: boolean;
     judul: string;
     tanggal_terbit?: string | null;
     isi_ringkasan?: string | null;
-    areas: Array<Pick<CeoLetterArea, 'parameter' | 'deskripsi' | 'prioritas' | 'urutan'>>;
+    areas: Array<Pick<CeoLetterArea, 'parameter' | 'deskripsi' | 'prioritas' | 'target_tipe' | 'target_unit' | 'urutan'>>;
     file?: File | null;
   }) => {
     const fd = new FormData();
     fd.append('tahun', String(payload.tahun));
+    if (payload.id) fd.append('id', payload.id);
+    if (payload.create_new) fd.append('create_new', 'true');
     if (payload.nomor_surat   != null) fd.append('nomor_surat',   payload.nomor_surat);
     fd.append('judul', payload.judul);
     if (payload.tanggal_terbit) fd.append('tanggal_terbit', payload.tanggal_terbit);

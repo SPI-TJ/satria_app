@@ -721,9 +721,6 @@ export default function UserManagementPage() {
   const total = userRes?.meta?.total ?? stats?.total ?? 0;
   const pages = Math.ceil(total / LIMIT);
 
-  const activeDivisiCount = new Set(users.map(u => u.divisi_id).filter(Boolean)).size;
-  const activeDeptCount = new Set(users.map(u => u.departemen_id).filter(Boolean)).size;
-
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -773,14 +770,14 @@ export default function UserManagementPage() {
             <Building2 className="w-3.5 h-3.5 text-blue-600" />
             <p className="text-xs text-slate-400">Total Divisi</p>
           </div>
-          <p className="text-2xl font-bold text-blue-600">{activeDivisiCount}</p>
+          <p className="text-2xl font-bold text-blue-600">{stats?.divisi_count ?? 0}</p>
         </div>
         <div className="bg-purple-50 rounded-xl border border-slate-100 p-4">
           <div className="flex items-center gap-2 mb-1">
             <Layers2 className="w-3.5 h-3.5 text-purple-600" />
             <p className="text-xs text-slate-400">Total Departemen</p>
           </div>
-          <p className="text-2xl font-bold text-purple-600">{activeDeptCount}</p>
+          <p className="text-2xl font-bold text-purple-600">{stats?.departemen_count ?? 0}</p>
         </div>
       </div>
 

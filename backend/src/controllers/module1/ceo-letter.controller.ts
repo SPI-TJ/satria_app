@@ -48,34 +48,48 @@ export async function getCeoLetter(req: Request, res: Response) {
   try {
     const tahun = req.query.tahun ? Number(req.query.tahun) : currentYear();
 
-    const head = await query(
+    const head = await query<{ id: string } & Record<string, unknown>>(
       `SELECT cl.*, u.nama_lengkap AS uploaded_by_nama
          FROM pkpt.ceo_letter cl
          LEFT JOIN auth.users u ON u.id = cl.uploaded_by
-        WHERE cl.tahun = $1 AND cl.deleted_at IS NULL`,
+        WHERE cl.tahun = $1 AND cl.deleted_at IS NULL
+        ORDER BY cl.created_at DESC`,
       [tahun],
     );
 
     if (head.rows.length === 0) {
       return res.json({
         success: true,
-        data: { header: null, areas: [] },
+        data: { header: null, areas: [], letters: [] },
         meta: { tahun, exists: false },
       });
     }
 
-    const id = head.rows[0].id;
-    const areas = await query(
-      `SELECT id, ceo_letter_id, parameter, deskripsi, prioritas, urutan
+    const ids = head.rows.map((r) => r.id);
+    const areas = await query<{ ceo_letter_id: string } & Record<string, unknown>>(
+      `SELECT id, ceo_letter_id, parameter, deskripsi, prioritas,
+              COALESCE(target_tipe, 'Direksi') AS target_tipe,
+              COALESCE(target_unit, 'Utama') AS target_unit,
+              urutan
          FROM pkpt.ceo_letter_area
-        WHERE ceo_letter_id = $1 AND deleted_at IS NULL
+        WHERE ceo_letter_id = ANY($1::uuid[]) AND deleted_at IS NULL
         ORDER BY urutan ASC, created_at ASC`,
-      [id],
+      [ids],
     );
+    const areasByLetter = new Map<string, typeof areas.rows>();
+    for (const area of areas.rows) {
+      const list = areasByLetter.get(area.ceo_letter_id) ?? [];
+      list.push(area);
+      areasByLetter.set(area.ceo_letter_id, list);
+    }
+    const letters = head.rows.map((h) => ({
+      ...h,
+      areas: areasByLetter.get(h.id) ?? [],
+    }));
 
     return res.json({
       success: true,
-      data: { header: head.rows[0], areas: areas.rows },
+      data: { header: letters[0], areas: letters[0].areas, letters },
       meta: { tahun, exists: true },
     });
   } catch (err) {
@@ -89,6 +103,8 @@ export async function upsertCeoLetter(req: Request, res: Response) {
   const client = await pool.connect();
   try {
     const tahun         = Number(req.body.tahun ?? currentYear());
+    const id            = req.body.id || null;
+    const createNew     = req.body.create_new === 'true';
     const nomor_surat   = req.body.nomor_surat ?? null;
     const judul         = (req.body.judul ?? '').trim();
     const tanggal_terbit = req.body.tanggal_terbit || null;
@@ -102,6 +118,8 @@ export async function upsertCeoLetter(req: Request, res: Response) {
       parameter: string;
       deskripsi?: string | null;
       prioritas?: 'Tinggi' | 'Sedang' | 'Rendah';
+      target_tipe?: 'Direksi' | 'Komisaris';
+      target_unit?: 'Utama' | 'Keuangan' | 'Bisnis' | 'Operasional' | 'Teknologi Informasi' | 'Komisaris';
       urutan?: number;
     };
     const areas = safeParseJson<AreaInput[]>(req.body.areas, []);
@@ -113,11 +131,15 @@ export async function upsertCeoLetter(req: Request, res: Response) {
 
     await client.query('BEGIN');
 
-    const existing = await client.query(
-      `SELECT id, file_url FROM pkpt.ceo_letter
-        WHERE tahun = $1 AND deleted_at IS NULL`,
-      [tahun],
-    );
+    const existing = createNew
+      ? { rows: [] }
+      : await client.query(
+        `SELECT id, file_url FROM pkpt.ceo_letter
+          WHERE ${id ? 'id = $1' : 'tahun = $1 AND deleted_at IS NULL'}
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [id || tahun],
+      );
 
     let letterId: string;
     if (existing.rows.length > 0) {
@@ -164,10 +186,13 @@ export async function upsertCeoLetter(req: Request, res: Response) {
       const a = areas[i];
       if (!a?.parameter || !a.parameter.trim()) continue;
       const prio = a.prioritas ?? 'Sedang';
+      const targetTipe = a.target_tipe ?? 'Direksi';
+      const targetUnit = targetTipe === 'Komisaris' ? 'Komisaris' : (a.target_unit ?? 'Utama');
       await client.query(
-        `INSERT INTO pkpt.ceo_letter_area (ceo_letter_id, parameter, deskripsi, prioritas, urutan)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [letterId, a.parameter.trim(), a.deskripsi ?? null, prio, a.urutan ?? i],
+        `INSERT INTO pkpt.ceo_letter_area
+           (ceo_letter_id, parameter, deskripsi, prioritas, target_tipe, target_unit, urutan)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [letterId, a.parameter.trim(), a.deskripsi ?? null, prio, targetTipe, targetUnit, a.urutan ?? i],
       );
     }
 
@@ -182,7 +207,10 @@ export async function upsertCeoLetter(req: Request, res: Response) {
       [letterId],
     );
     const areasRes = await query(
-      `SELECT id, ceo_letter_id, parameter, deskripsi, prioritas, urutan
+      `SELECT id, ceo_letter_id, parameter, deskripsi, prioritas,
+              COALESCE(target_tipe, 'Direksi') AS target_tipe,
+              COALESCE(target_unit, 'Utama') AS target_unit,
+              urutan
          FROM pkpt.ceo_letter_area
         WHERE ceo_letter_id = $1 AND deleted_at IS NULL
         ORDER BY urutan ASC, created_at ASC`,
@@ -226,7 +254,7 @@ export async function uploadCeoLetterFile(req: Request, res: Response) {
     }
     if (existing.rows[0].file_url) deletePhysicalFile(existing.rows[0].file_url);
 
-    const result = await query(
+    const result = await query<{ id: string; file_url: string | null }>(
       `UPDATE pkpt.ceo_letter
           SET file_url = $2, file_name = $3, file_size = $4,
               uploaded_by = $5, updated_at = NOW()
@@ -256,7 +284,7 @@ export async function deleteCeoLetterFile(req: Request, res: Response) {
     }
     deletePhysicalFile(existing.rows[0].file_url);
 
-    const result = await query(
+    const result = await query<{ id: string; file_url: string | null }>(
       `UPDATE pkpt.ceo_letter
           SET file_url = NULL, file_name = NULL, file_size = NULL, updated_at = NOW()
         WHERE id = $1
@@ -275,7 +303,7 @@ export async function deleteCeoLetterFile(req: Request, res: Response) {
 export async function deleteCeoLetter(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const result = await query(
+    const result = await query<{ id: string; file_url: string | null }>(
       `UPDATE pkpt.ceo_letter
           SET deleted_at = NOW(), updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL

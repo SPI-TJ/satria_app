@@ -5,18 +5,34 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Transjakarta corporate blue palette
         primary: {
-          50:  '#eef2ff',
-          100: '#e0e7ff',
-          500: '#3b5bdb',
-          600: '#2f4ac7',
-          700: '#1e3a8a',
-          800: '#1e3269',
-          900: '#172554',
+          50:  '#EFF8FF',
+          100: '#DBEFFE',
+          200: '#BAE0FD',
+          300: '#7CC8FB',
+          400: '#38A8F5',
+          500: '#0E8EE2',
+          600: '#006CB7',  // Transjakarta primary blue
+          700: '#0058A0',
+          800: '#004780',
+          900: '#003660',
+          950: '#002244',
+        },
+        // Transjakarta secondary — teal/cyan accent
+        tj: {
+          red:   '#E82027',  // Transjakarta logo red
+          blue:  '#006CB7',  // Corporate blue
+          navy:  '#003660',  // Deep navy
+          light: '#E8F4FD',  // Light blue background
         },
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['PT Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      },
+      borderRadius: {
+        xl: '0.75rem',
+        '2xl': '1rem',
       },
     },
   },

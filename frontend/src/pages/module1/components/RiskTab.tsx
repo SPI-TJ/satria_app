@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, Eye, Trash2,
-  ChevronLeft, ChevronRight, BarChart3,
+  Search, ChevronLeft, ChevronRight, BarChart3,
   AlertTriangle, X, Download, Upload, Database,
 } from 'lucide-react';
 import { risksApi, organisasiApi, settingsApi } from '../../../services/api';
@@ -22,7 +21,7 @@ export function RiskLevelBadge({ level, label, bg, text }: {
   const bgClass  = bg   || LEVEL_COLORS[level as RiskLevelKode]?.bg   || 'bg-slate-100';
   const txtClass = text || LEVEL_COLORS[level as RiskLevelKode]?.text || 'text-slate-600';
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${bgClass} ${txtClass}`}>
+    <span className={`badge ${bgClass} ${txtClass}`}>
       {level}
       {label && <span className="font-normal opacity-75">({label})</span>}
     </span>
@@ -43,21 +42,18 @@ export default function RiskTab({ tahun }: Props) {
   const { user } = useAuthStore();
   const isAdmin = ['admin_spi', 'it_admin', 'kepala_spi'].includes(user?.role ?? '');
 
-  // ── State ──────────────────────────────────────────────────
-  const [search, setSearch] = useState('');
+  const [search, setSearch]           = useState('');
   const [direktoratId, setDirektoratId] = useState('');
-  const [divisiId, setDivisiId] = useState('');
+  const [divisiId, setDivisiId]       = useState('');
   const [levelInherent, setLevelInherent] = useState('');
   const [hosKategoriId, setHosKategoriId] = useState('');
-  const [page, setPage] = useState(1);
+  const [page, setPage]               = useState(1);
 
-  // Modals
-  const [detailRisk, setDetailRisk] = useState<RiskData | null>(null);
+  const [detailRisk, setDetailRisk]   = useState<RiskData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RiskData | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editRisk, setEditRisk] = useState<RiskData | null>(null);
+  const [formOpen, setFormOpen]       = useState(false);
+  const [editRisk, setEditRisk]       = useState<RiskData | null>(null);
 
-  // Import / template
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
@@ -93,7 +89,6 @@ export default function RiskTab({ tahun }: Props) {
 
   const LIMIT = 20;
 
-  // ── Queries ────────────────────────────────────────────────
   const { data: risksRes, isLoading, isError } = useQuery({
     queryKey: ['risks', { tahun, search, direktoratId, divisiId, levelInherent, hosKategoriId, page }],
     queryFn: () => risksApi.getAll({
@@ -114,26 +109,22 @@ export default function RiskTab({ tahun }: Props) {
     queryFn: () => organisasiApi.getDirektorats(),
     staleTime: 3600_000,
   });
-
   const { data: divisRes } = useQuery({
     queryKey: ['divisi-dropdown', direktoratId],
     queryFn: () => organisasiApi.getDivisis(direktoratId || undefined),
     staleTime: 3600_000,
   });
-
   const { data: levelRefRes } = useQuery({
     queryKey: ['risk-level-ref'],
     queryFn: () => risksApi.getLevelRef(),
     staleTime: 3600_000,
   });
-
   const { data: hosKategoriRes } = useQuery({
     queryKey: ['hos-kategori-filter', tahun],
     queryFn: () => settingsApi.getHosKategoris(tahun),
     staleTime: 3600_000,
   });
 
-  // Extract data — axiosRes.data = API body, body.data = payload
   const risksList   = risksRes?.data?.data?.data ?? [];
   const meta        = risksRes?.data?.data?.meta;
   const direktorats = direktoratsRes?.data?.data  ?? [];
@@ -141,12 +132,12 @@ export default function RiskTab({ tahun }: Props) {
   const levelRefs   = levelRefRes?.data?.data     ?? [];
   const hosKategoris = hosKategoriRes?.data?.data ?? [];
 
-  // ── Mutations ──────────────────────────────────────────────
   const deleteMut = useMutation({
     mutationFn: (id: string) => risksApi.delete(id),
     onSuccess: () => {
       toast.success('Risiko berhasil dihapus');
       setDeleteTarget(null);
+      setDetailRisk(null);
       qc.invalidateQueries({ queryKey: ['risks'] });
     },
     onError: (e: any) => {
@@ -156,13 +147,9 @@ export default function RiskTab({ tahun }: Props) {
     },
   });
 
-  // ── Handlers ───────────────────────────────────────────────
   const handleFilterChange = (key: string, value: string) => {
     setPage(1);
-    if (key === 'direktorat') { 
-      setDirektoratId(value); 
-      setDivisiId(''); // Reset divisi
-    }
+    if (key === 'direktorat') { setDirektoratId(value); setDivisiId(''); }
     if (key === 'divisi') setDivisiId(value);
     if (key === 'level') setLevelInherent(value);
     if (key === 'hos') setHosKategoriId(value);
@@ -170,12 +157,8 @@ export default function RiskTab({ tahun }: Props) {
   };
 
   const resetFilters = () => {
-    setSearch('');
-    setDirektoratId('');
-    setDivisiId('');
-    setLevelInherent('');
-    setHosKategoriId('');
-    setPage(1);
+    setSearch(''); setDirektoratId(''); setDivisiId('');
+    setLevelInherent(''); setHosKategoriId(''); setPage(1);
   };
 
   const hasFilters = search || direktoratId || divisiId || levelInherent || hosKategoriId;
@@ -197,51 +180,47 @@ export default function RiskTab({ tahun }: Props) {
             <button
               onClick={handleDownloadTemplate}
               disabled={downloadingTemplate}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all disabled:opacity-50"
+              className="btn-secondary"
             >
               <Download className="w-4 h-4" />
               {downloadingTemplate ? 'Menyiapkan...' : 'Download Template'}
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
+              className="btn-primary"
             >
               <Upload className="w-4 h-4" />
               Import Excel
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="hidden"
-              onChange={handleImportFile}
-            />
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportFile} />
             <button
               disabled
               title="Integrasi TRUST — akan tersedia setelah API TRUST terhubung"
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-400 cursor-not-allowed transition-all"
+              className="btn-secondary opacity-50 cursor-not-allowed"
             >
               <Database className="w-4 h-4" />
               Sinkronisasi TRUST
-              <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-bold">SOON</span>
+              <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-bold">SOON</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* ── Info sumber data ─────────────────────────────────── */}
+      {/* ── Info sumber data ─────────────────────────────── */}
       {isAdmin && (
-        <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-xs text-blue-800 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-600" />
-          <div>
-            Data risiko bersumber dari <strong>TRUST</strong> (otomatis) atau <strong>Import Excel</strong>. Unduh template terlebih dahulu untuk melihat field yang dibutuhkan sebelum import.
-          </div>
+        <div className="bg-primary-50 border border-primary-100 rounded-xl px-4 py-3 text-xs text-primary-800 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-primary-600" />
+          <span>
+            Data risiko bersumber dari <strong>TRUST</strong> (otomatis) atau <strong>Import Excel</strong>.
+            Unduh template terlebih dahulu untuk melihat field yang dibutuhkan sebelum import.
+            <br />
+            <span className="text-primary-600 mt-0.5 inline-block">Klik baris data untuk melihat detail risiko.</span>
+          </span>
         </div>
       )}
 
       {/* ── Filters ─────────────────────────────────────────── */}
-      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-4">
-        {/* Search Bar */}
+      <div className="filter-card">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -249,151 +228,79 @@ export default function RiskTab({ tahun }: Props) {
             placeholder="Cari ID Risiko atau Nama Risiko..."
             value={search}
             onChange={(e) => handleFilterChange('search', e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-transparent"
+            className="input pl-10"
           />
         </div>
 
-        {/* Dropdowns */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Direktorat */}
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-2">Direktorat</label>
-            <select
-              value={direktoratId}
-              onChange={(e) => handleFilterChange('direktorat', e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
-            >
+            <label className="section-label block mb-1.5">Direktorat</label>
+            <select value={direktoratId} onChange={(e) => handleFilterChange('direktorat', e.target.value)} className="select-input">
               <option value="">Semua Direktorat</option>
-              {direktorats.map((d) => (
-                <option key={d.id} value={d.id}>{d.nama}</option>
-              ))}
+              {direktorats.map((d) => <option key={d.id} value={d.id}>{d.nama}</option>)}
             </select>
           </div>
-
-          {/* Divisi */}
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-2">Divisi</label>
-            <select
-              value={divisiId}
-              onChange={(e) => handleFilterChange('divisi', e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
-            >
+            <label className="section-label block mb-1.5">Divisi</label>
+            <select value={divisiId} onChange={(e) => handleFilterChange('divisi', e.target.value)} className="select-input">
               <option value="">Semua Divisi</option>
-              {divisi.map((d) => (
-                <option key={d.id} value={d.id}>{d.nama}</option>
-              ))}
+              {divisi.map((d) => <option key={d.id} value={d.id}>{d.nama}</option>)}
             </select>
           </div>
-
-          {/* Perspektif HoS */}
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-2">Perspektif HoS</label>
-            <select
-              value={hosKategoriId}
-              onChange={(e) => handleFilterChange('hos', e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
-            >
+            <label className="section-label block mb-1.5">Perspektif HoS</label>
+            <select value={hosKategoriId} onChange={(e) => handleFilterChange('hos', e.target.value)} className="select-input">
               <option value="">Semua Perspektif</option>
-              {hosKategoris.map((h) => (
-                <option key={h.id} value={h.id}>{h.nama_perspektif}</option>
-              ))}
+              {hosKategoris.map((h) => <option key={h.id} value={h.id}>{h.nama_perspektif}</option>)}
             </select>
           </div>
-
-          {/* Level Risiko Inherent */}
           <div>
-            <label className="text-xs font-semibold text-slate-700 block mb-2">Tingkat Risiko</label>
-            <select
-              value={levelInherent}
-              onChange={(e) => handleFilterChange('level', e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-300 bg-white"
-            >
+            <label className="section-label block mb-1.5">Tingkat Risiko</label>
+            <select value={levelInherent} onChange={(e) => handleFilterChange('level', e.target.value)} className="select-input">
               <option value="">Semua Level</option>
-              {levelRefs.map((lr) => (
-                <option key={lr.kode} value={lr.kode}>
-                  {lr.kode} - {lr.label}
-                </option>
-              ))}
+              {levelRefs.map((lr) => <option key={lr.kode} value={lr.kode}>{lr.kode} - {lr.label}</option>)}
             </select>
           </div>
-
-          {/* Reset Button */}
           {hasFilters && (
             <div className="flex items-end">
-              <button
-                onClick={resetFilters}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4" />
-                Reset Filter
+              <button onClick={resetFilters} className="btn-secondary w-full justify-center">
+                <X className="w-4 h-4" /> Reset Filter
               </button>
             </div>
           )}
         </div>
 
-        {/* Active Filter Chips */}
         {hasFilters && (
-          <div className="flex flex-wrap gap-2 pt-2">
+          <div className="flex flex-wrap gap-2 pt-1">
             {search && (
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary-50 border border-primary-200 rounded-full text-xs">
-                <span className="text-primary-700 font-medium">Cari: {search}</span>
-                <button
-                  onClick={() => handleFilterChange('search', '')}
-                  className="text-primary-500 hover:text-primary-700"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+              <span className="filter-chip bg-primary-50 border-primary-200 text-primary-700">
+                Cari: {search}
+                <button onClick={() => handleFilterChange('search', '')} className="ml-1"><X className="w-3 h-3" /></button>
+              </span>
             )}
             {direktoratId && (
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-xs">
-                <span className="text-blue-700 font-medium">
-                  Dir: {direktorats.find(d => d.id === direktoratId)?.nama}
-                </span>
-                <button
-                  onClick={() => handleFilterChange('direktorat', '')}
-                  className="text-blue-500 hover:text-blue-700"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+              <span className="filter-chip bg-blue-50 border-blue-200 text-blue-700">
+                Dir: {direktorats.find(d => d.id === direktoratId)?.nama}
+                <button onClick={() => handleFilterChange('direktorat', '')} className="ml-1"><X className="w-3 h-3" /></button>
+              </span>
             )}
             {divisiId && (
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-50 border border-green-200 rounded-full text-xs">
-                <span className="text-green-700 font-medium">
-                  Div: {divisi.find(d => d.id === divisiId)?.nama}
-                </span>
-                <button
-                  onClick={() => handleFilterChange('divisi', '')}
-                  className="text-green-500 hover:text-green-700"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+              <span className="filter-chip bg-green-50 border-green-200 text-green-700">
+                Div: {divisi.find(d => d.id === divisiId)?.nama}
+                <button onClick={() => handleFilterChange('divisi', '')} className="ml-1"><X className="w-3 h-3" /></button>
+              </span>
             )}
             {levelInherent && (
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-50 border border-orange-200 rounded-full text-xs">
-                <span className="text-orange-700 font-medium">Level: {levelInherent}</span>
-                <button
-                  onClick={() => handleFilterChange('level', '')}
-                  className="text-orange-500 hover:text-orange-700"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+              <span className="filter-chip bg-orange-50 border-orange-200 text-orange-700">
+                Level: {levelInherent}
+                <button onClick={() => handleFilterChange('level', '')} className="ml-1"><X className="w-3 h-3" /></button>
+              </span>
             )}
             {hosKategoriId && (
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-full text-xs">
-                <span className="text-indigo-700 font-medium">
-                  HoS: {hosKategoris.find(h => h.id === hosKategoriId)?.nama_perspektif}
-                </span>
-                <button
-                  onClick={() => handleFilterChange('hos', '')}
-                  className="text-indigo-500 hover:text-indigo-700"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
+              <span className="filter-chip bg-indigo-50 border-indigo-200 text-indigo-700">
+                HoS: {hosKategoris.find(h => h.id === hosKategoriId)?.nama_perspektif}
+                <button onClick={() => handleFilterChange('hos', '')} className="ml-1"><X className="w-3 h-3" /></button>
+              </span>
             )}
           </div>
         )}
@@ -405,7 +312,7 @@ export default function RiskTab({ tahun }: Props) {
           <div className="animate-spin rounded-full h-8 w-8 border border-slate-300 border-t-primary-600" />
         </div>
       ) : isError ? (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold text-red-900">Gagal memuat data risiko</p>
@@ -413,35 +320,39 @@ export default function RiskTab({ tahun }: Props) {
           </div>
         </div>
       ) : risksList.length === 0 ? (
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-8 text-center">
+        <div className="card p-8 text-center">
           <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-600 font-medium">Tidak ada risiko yang ditemukan</p>
-          <p className="text-sm text-slate-500 mt-1">Coba ubah filter, atau import data dari Excel / TRUST.</p>
+          <p className="text-sm text-slate-400 mt-1">Coba ubah filter, atau import data dari Excel / TRUST.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+        <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+            <table className="table-base min-w-[900px]">
+              <thead className="table-head">
                 <tr>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">ID Risiko</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Direktorat</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Divisi</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Nama Risiko</th>
-                  <th className="px-5 py-3 text-center font-semibold text-slate-700">Tingkat Risiko</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Perspektif HoS</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Sasaran Strategis</th>
-                  <th className="px-5 py-3 text-center font-semibold text-slate-700">Aksi</th>
+                  <th className="px-5 py-3 text-left">ID Risiko</th>
+                  <th className="px-5 py-3 text-left">Direktorat</th>
+                  <th className="px-5 py-3 text-left">Divisi</th>
+                  <th className="px-5 py-3 text-left">Nama Risiko</th>
+                  <th className="px-5 py-3 text-center">Tingkat Risiko</th>
+                  <th className="px-5 py-3 text-left">Perspektif HoS</th>
+                  <th className="px-5 py-3 text-left">Sasaran Strategis</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {risksList.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                  <tr
+                    key={r.id}
+                    onClick={() => setDetailRisk(r)}
+                    className="table-row"
+                    title="Klik untuk melihat detail risiko"
+                  >
                     <td className="px-5 py-4 font-mono text-xs text-slate-600">{r.id_risiko}</td>
-                    <td className="px-5 py-4 text-slate-800">{r.direktorat || '—'}</td>
-                    <td className="px-5 py-4 text-slate-800">{r.divisi || '—'}</td>
+                    <td className="px-5 py-4 text-slate-800 text-sm">{r.direktorat || '—'}</td>
+                    <td className="px-5 py-4 text-slate-800 text-sm">{r.divisi || '—'}</td>
                     <td className="px-5 py-4 max-w-xs">
-                      <p className="font-medium text-slate-900 line-clamp-2">{r.nama_risiko}</p>
+                      <p className="font-medium text-slate-900 text-sm line-clamp-2">{r.nama_risiko}</p>
                     </td>
                     <td className="px-5 py-4 text-center">
                       <RiskLevelBadge
@@ -453,7 +364,7 @@ export default function RiskTab({ tahun }: Props) {
                     </td>
                     <td className="px-5 py-4 text-xs">
                       {r.hos_kategori_nama ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold">
+                        <span className="badge bg-indigo-50 border border-indigo-100 text-indigo-700">
                           {r.hos_kategori_nama}
                         </span>
                       ) : <span className="text-slate-300">—</span>}
@@ -464,26 +375,6 @@ export default function RiskTab({ tahun }: Props) {
                           {r.sasaran_strategis_nama}
                         </p>
                       ) : <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => setDetailRisk(r)}
-                          className="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors"
-                          title="Lihat Detail"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {isAdmin && (
-                          <button
-                            onClick={() => setDeleteTarget(r)}
-                            className="p-1.5 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
-                            title="Hapus"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 ))}
@@ -496,15 +387,11 @@ export default function RiskTab({ tahun }: Props) {
       {/* ── Pagination ──────────────────────────────────────── */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-xs text-slate-600">
-            Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong> • Total: <strong>{meta?.total}</strong> risiko
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-1.5 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-            >
+          <p className="text-xs text-slate-500">
+            Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong> · Total <strong>{meta?.total}</strong> risiko
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-icon hover:bg-slate-100 disabled:opacity-40">
               <ChevronLeft className="w-4 h-4" />
             </button>
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -514,21 +401,15 @@ export default function RiskTab({ tahun }: Props) {
                 <button
                   key={pageNum}
                   onClick={() => setPage(pageNum)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    page === pageNum
-                      ? 'bg-primary-600 text-white'
-                      : 'hover:bg-slate-100 text-slate-700'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    page === pageNum ? 'bg-primary-600 text-white' : 'hover:bg-slate-100 text-slate-700'
                   }`}
                 >
                   {pageNum}
                 </button>
               );
             })}
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-1.5 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-            >
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="btn-icon hover:bg-slate-100 disabled:opacity-40">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -546,7 +427,7 @@ export default function RiskTab({ tahun }: Props) {
             setDetailRisk(null);
             setFormOpen(true);
           } : undefined}
-          onDelete={() => setDeleteTarget(detailRisk)}
+          onDelete={isAdmin ? () => setDeleteTarget(detailRisk) : undefined}
         />
       )}
 
@@ -564,25 +445,18 @@ export default function RiskTab({ tahun }: Props) {
       )}
 
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-lg max-w-sm w-full p-6 space-y-4">
-            <div>
-              <p className="font-bold text-slate-900">Hapus Risiko</p>
-              <p className="text-sm text-slate-600 mt-2">
-                Anda yakin ingin menghapus risiko <strong>{deleteTarget.id_risiko}</strong>? Aksi ini tidak dapat dibatalkan.
-              </p>
-            </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <p className="font-bold text-slate-900">Hapus Risiko</p>
+            <p className="text-sm text-slate-600">
+              Anda yakin ingin menghapus risiko <strong>{deleteTarget.id_risiko}</strong>? Aksi ini tidak dapat dibatalkan.
+            </p>
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                Batal
-              </button>
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary">Batal</button>
               <button
                 onClick={() => deleteMut.mutate(deleteTarget.id)}
                 disabled={deleteMut.isPending}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg transition-colors"
               >
                 {deleteMut.isPending ? 'Menghapus...' : 'Hapus'}
               </button>

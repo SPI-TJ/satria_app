@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Shield, Search, RefreshCw, Calendar, Activity,
+  Shield, Search, RefreshCw, Activity, Clock,
   ChevronLeft, ChevronRight, Info, LogIn, Key,
   UserPlus, UserMinus, Edit2, Trash2, Layers, ToggleRight,
-  FileUp, Download, CheckCircle,
+  FileUp, Download, CheckCircle, X, TrendingUp, Users,
 } from 'lucide-react';
 import api from '../../services/api';
 import { ROLE_LABELS } from '../../types';
-import toast from 'react-hot-toast';
 
 // ── Types ─────────────────────────────────────────────────────
 interface LogEntry {
@@ -38,26 +37,27 @@ interface SummaryData {
 
 // ── Action icons & colors ─────────────────────────────────────
 const ACTION_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  LOGIN:               { icon: LogIn,       color: 'text-green-700',  bg: 'bg-green-100' },
-  LOGOUT:              { icon: LogIn,       color: 'text-slate-600',  bg: 'bg-slate-100' },
-  CHANGE_PASSWORD:     { icon: Key,         color: 'text-amber-700',  bg: 'bg-amber-100' },
-  RESET_PASSWORD:      { icon: Key,         color: 'text-orange-700', bg: 'bg-orange-100' },
-  CREATE_USER:         { icon: UserPlus,    color: 'text-blue-700',   bg: 'bg-blue-100' },
-  UPDATE_USER:         { icon: Edit2,       color: 'text-indigo-700', bg: 'bg-indigo-100' },
-  UPDATE_MODULE_ACCESS:{ icon: Layers,      color: 'text-violet-700', bg: 'bg-violet-100' },
-  SET_PASSWORD:        { icon: Key,         color: 'text-amber-700',  bg: 'bg-amber-100' },
-  ACTIVATE_USER:       { icon: ToggleRight, color: 'text-green-700',  bg: 'bg-green-100' },
-  DEACTIVATE_USER:     { icon: UserMinus,   color: 'text-red-700',    bg: 'bg-red-100' },
-  DELETE_USER:         { icon: Trash2,      color: 'text-red-700',    bg: 'bg-red-100' },
-  CREATE_RISK:         { icon: UserPlus,    color: 'text-teal-700',   bg: 'bg-teal-100' },
-  UPDATE_RISK:         { icon: Edit2,       color: 'text-teal-700',   bg: 'bg-teal-100' },
-  DELETE_RISK:         { icon: Trash2,      color: 'text-red-700',    bg: 'bg-red-100' },
-  IMPORT_RISK_TRUST:   { icon: Download,    color: 'text-cyan-700',   bg: 'bg-cyan-100' },
-  IMPORT_RISK_FILE:    { icon: FileUp,      color: 'text-cyan-700',   bg: 'bg-cyan-100' },
-  CREATE_PLAN:         { icon: UserPlus,    color: 'text-primary-700',bg: 'bg-primary-100' },
-  UPDATE_PLAN:         { icon: Edit2,       color: 'text-primary-700',bg: 'bg-primary-100' },
-  DELETE_PLAN:         { icon: Trash2,      color: 'text-red-700',    bg: 'bg-red-100' },
-  FINALIZE_PLAN:       { icon: CheckCircle, color: 'text-green-700',  bg: 'bg-green-100' },
+  LOGIN:                { icon: LogIn,       color: 'text-green-700',   bg: 'bg-green-100'   },
+  LOGOUT:               { icon: LogIn,       color: 'text-slate-600',   bg: 'bg-slate-100'   },
+  CHANGE_PASSWORD:      { icon: Key,         color: 'text-amber-700',   bg: 'bg-amber-100'   },
+  RESET_PASSWORD:       { icon: Key,         color: 'text-orange-700',  bg: 'bg-orange-100'  },
+  UPDATE_USER_RESET_PW: { icon: Key,         color: 'text-orange-700',  bg: 'bg-orange-100'  },
+  CREATE_USER:          { icon: UserPlus,    color: 'text-blue-700',    bg: 'bg-blue-100'    },
+  UPDATE_USER:          { icon: Edit2,       color: 'text-indigo-700',  bg: 'bg-indigo-100'  },
+  UPDATE_MODULE_ACCESS: { icon: Layers,      color: 'text-violet-700',  bg: 'bg-violet-100'  },
+  SET_PASSWORD:         { icon: Key,         color: 'text-amber-700',   bg: 'bg-amber-100'   },
+  ACTIVATE_USER:        { icon: ToggleRight, color: 'text-green-700',   bg: 'bg-green-100'   },
+  DEACTIVATE_USER:      { icon: UserMinus,   color: 'text-red-700',     bg: 'bg-red-100'     },
+  DELETE_USER:          { icon: Trash2,      color: 'text-red-700',     bg: 'bg-red-100'     },
+  CREATE_RISK:          { icon: UserPlus,    color: 'text-teal-700',    bg: 'bg-teal-100'    },
+  UPDATE_RISK:          { icon: Edit2,       color: 'text-teal-700',    bg: 'bg-teal-100'    },
+  DELETE_RISK:          { icon: Trash2,      color: 'text-red-700',     bg: 'bg-red-100'     },
+  IMPORT_RISK_TRUST:    { icon: Download,    color: 'text-cyan-700',    bg: 'bg-cyan-100'    },
+  IMPORT_RISK_FILE:     { icon: FileUp,      color: 'text-cyan-700',    bg: 'bg-cyan-100'    },
+  CREATE_PLAN:          { icon: UserPlus,    color: 'text-primary-700', bg: 'bg-primary-100' },
+  UPDATE_PLAN:          { icon: Edit2,       color: 'text-primary-700', bg: 'bg-primary-100' },
+  DELETE_PLAN:          { icon: Trash2,      color: 'text-red-700',     bg: 'bg-red-100'     },
+  FINALIZE_PLAN:        { icon: CheckCircle, color: 'text-green-700',   bg: 'bg-green-100'   },
 };
 
 const MODUL_LABELS: Record<string, string> = {
@@ -70,12 +70,22 @@ const MODUL_LABELS: Record<string, string> = {
   pelaporan:       'Pelaporan',
 };
 
+const MODUL_COLORS: Record<string, string> = {
+  auth:            'bg-green-50 text-green-700',
+  user_management: 'bg-blue-50 text-blue-700',
+  pkpt:            'bg-primary-50 text-primary-700',
+  risk:            'bg-teal-50 text-teal-700',
+  penugasan:       'bg-violet-50 text-violet-700',
+  audit:           'bg-amber-50 text-amber-700',
+  pelaporan:       'bg-rose-50 text-rose-700',
+};
+
 const ROLE_COLORS: Record<string, string> = {
   it_admin:          'bg-purple-100 text-purple-700',
-  admin_spi:         'bg-blue-100   text-blue-700',
+  admin_spi:         'bg-blue-100 text-blue-700',
   kepala_spi:        'bg-indigo-100 text-indigo-700',
-  pengendali_teknis: 'bg-teal-100   text-teal-700',
-  anggota_tim:       'bg-green-100  text-green-700',
+  pengendali_teknis: 'bg-teal-100 text-teal-700',
+  anggota_tim:       'bg-green-100 text-green-700',
   auditee:           'bg-orange-100 text-orange-700',
 };
 
@@ -83,7 +93,7 @@ function ActionBadge({ action, label }: { action: string; label: string }) {
   const cfg = ACTION_CONFIG[action] ?? { icon: Info, color: 'text-slate-600', bg: 'bg-slate-100' };
   const Icon = cfg.icon;
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
       <Icon className="w-3 h-3 flex-shrink-0" />
       {label}
     </span>
@@ -91,38 +101,35 @@ function ActionBadge({ action, label }: { action: string; label: string }) {
 }
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 function formatTime(dateStr: string) {
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 function timeAgo(dateStr: string) {
   const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (secs < 60) return `${secs}d lalu`;
   if (secs < 3600) return `${Math.floor(secs / 60)}m lalu`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}j lalu`;
-  return `${Math.floor(secs / 86400)} hari lalu`;
+  return `${Math.floor(secs / 86400)}h lalu`;
 }
 
 // ── Main Page ─────────────────────────────────────────────────
 export default function ActivityLogPage() {
-  const [search,     setSearch]     = useState('');
-  const [modul,      setModul]      = useState('');
-  const [action,     setAction]     = useState('');
-  const [dateFrom,   setDateFrom]   = useState('');
-  const [dateTo,     setDateTo]     = useState('');
-  const [page,       setPage]       = useState(1);
+  const [search,   setSearch]   = useState('');
+  const [modul,    setModul]    = useState('');
+  const [action,   setAction]   = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo,   setDateTo]   = useState('');
+  const [page,     setPage]     = useState(1);
 
-  // ── Queries ───────────────────────────────────────────────
-  const { data: logData, isLoading, refetch } = useQuery({
+  const { data: logData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['activity-log', search, modul, action, dateFrom, dateTo, page],
     queryFn: async () => {
-      const params: Record<string, string | number> = { page, limit: 25 };
-      if (search)   params.search   = search;
-      if (modul)    params.modul    = modul;
-      if (action)   params.action   = action;
+      const params: Record<string, string | number> = { page, limit: 10 };
+      if (search)   params.search    = search;
+      if (modul)    params.modul     = modul;
+      if (action)   params.action    = action;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo)   params.date_to   = dateTo;
       const res = await api.get('/activity-log', { params });
@@ -140,24 +147,37 @@ export default function ActivityLogPage() {
     staleTime: 60_000,
   });
 
-  const logs: LogEntry[]     = logData?.data ?? [];
+  const logs: LogEntry[]         = logData?.data ?? [];
   const meta: LogMeta | undefined = logData?.meta;
-  const actionLabels         = meta?.action_labels ?? {};
+  const actionLabels              = meta?.action_labels ?? {};
+  const hasFilters                = !!(search || modul || action || dateFrom || dateTo);
 
   function handleReset() {
     setSearch(''); setModul(''); setAction('');
     setDateFrom(''); setDateTo(''); setPage(1);
-    refetch();
-    toast.success('Filter direset');
+  }
+
+  // Build pagination buttons
+  function paginationPages(current: number, total: number): number[] {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: number[] = [1];
+    const start = Math.max(2, current - 1);
+    const end   = Math.min(total - 1, current + 1);
+    if (start > 2) pages.push(-1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (end < total - 1) pages.push(-1);
+    pages.push(total);
+    return pages;
   }
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+
+      {/* ── Page header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center">
-            <Activity className="w-5 h-5 text-slate-600" />
+          <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center">
+            <Activity className="w-5 h-5 text-primary-600" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-800">Log Aktivitas Sistem</h1>
@@ -166,203 +186,248 @@ export default function ActivityLogPage() {
         </div>
         <button
           onClick={() => refetch()}
-          className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+          disabled={isFetching}
+          className="btn-secondary"
           title="Refresh"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+          Refresh
         </button>
       </div>
 
-      {/* Summary cards */}
+      {/* ── Summary stat cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <p className="text-xs text-slate-400 mb-1">Aktivitas 24 Jam</p>
-          <p className="text-2xl font-bold text-slate-800">{summary?.total_24h ?? 0}</p>
+        <div className="stat-card">
+          <div className="p-2 rounded-lg flex-shrink-0 bg-primary-50 text-primary-600">
+            <Clock className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold leading-none text-slate-900">{summary?.total_24h ?? 0}</p>
+            <p className="text-xs font-bold mt-1 text-primary-700">Aktivitas 24 Jam</p>
+          </div>
         </div>
         {(summary?.by_modul_30d ?? []).slice(0, 3).map((m) => (
-          <div key={m.modul} className="bg-white rounded-xl border border-slate-100 p-4">
-            <p className="text-xs text-slate-400 mb-1">{MODUL_LABELS[m.modul] ?? m.modul} (30 hari)</p>
-            <p className="text-2xl font-bold text-primary-700">{m.count}</p>
+          <div key={m.modul} className="stat-card">
+            <div className="p-2 rounded-lg flex-shrink-0 bg-slate-100 text-slate-600">
+              <TrendingUp className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold leading-none text-slate-900">{m.count}</p>
+              <p className="text-xs font-bold mt-1 text-slate-600">{MODUL_LABELS[m.modul] ?? m.modul}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">30 hari terakhir</p>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Top actions (7 days) */}
+      {/* ── Top actions — 7 hari ── */}
       {(summary?.by_action_7d ?? []).length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Aksi Terbanyak — 7 Hari Terakhir</p>
+        <div className="card p-4">
+          <p className="section-label mb-3">Aksi Terbanyak — 7 Hari Terakhir</p>
           <div className="flex flex-wrap gap-2">
             {(summary?.by_action_7d ?? []).map((a) => (
-              <div key={a.action} className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
+              <div key={a.action} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
                 <ActionBadge action={a.action} label={a.label} />
-                <span className="text-sm font-bold text-slate-700">{a.count}×</span>
+                <span className="text-sm font-bold text-slate-600">{a.count}×</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-100 p-4">
+      {/* ── Filter card ── */}
+      <div className="card p-4">
         <div className="flex flex-wrap gap-3">
           {/* Search */}
           <div className="flex-1 min-w-48 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Cari nama user, aksi..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="input pl-9 h-10 w-full"
             />
           </div>
-          {/* Modul filter */}
-          <select
-            value={modul}
-            onChange={(e) => { setModul(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
+
+          <select value={modul} onChange={(e) => { setModul(e.target.value); setPage(1); }} className="select-input h-10 w-auto">
             <option value="">Semua Modul</option>
             {(meta?.moduls ?? []).map((m) => (
               <option key={m} value={m}>{MODUL_LABELS[m] ?? m}</option>
             ))}
           </select>
-          {/* Action filter */}
-          <select
-            value={action}
-            onChange={(e) => { setAction(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
+
+          <select value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }} className="select-input h-10 w-auto">
             <option value="">Semua Aksi</option>
             {(meta?.actions ?? []).map((a) => (
               <option key={a} value={a}>{actionLabels[a] ?? a}</option>
             ))}
           </select>
-          {/* Date from */}
-          <div className="flex items-center gap-1">
-            <Calendar className="w-4 h-4 text-slate-400 flex-shrink-0" />
+
+          <div className="flex items-center gap-2">
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="input h-10 w-auto text-sm"
+            />
+            <span className="text-slate-400 text-sm">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              className="input h-10 w-auto text-sm"
             />
           </div>
-          <span className="text-slate-400 self-center text-sm">—</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
-          {/* Reset */}
-          {(search || modul || action || dateFrom || dateTo) && (
-            <button
-              onClick={handleReset}
-              className="px-3 py-2 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-            >
-              Reset Filter
+
+          {hasFilters && (
+            <button onClick={handleReset} className="btn-secondary h-10">
+              <X className="w-3.5 h-3.5" /> Reset Filter
             </button>
           )}
         </div>
       </div>
 
-      {/* Log Table */}
-      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-        {/* Table header */}
-        <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-            {meta ? `${meta.total.toLocaleString()} entri log` : 'Log Aktivitas'}
-          </p>
+      {/* ── Table ── */}
+      <div className="card overflow-hidden">
+        {/* Table toolbar */}
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-slate-400" />
+            <span className="text-sm font-semibold text-slate-700">
+              {meta ? (
+                <>
+                  <span className="text-primary-700">{meta.total.toLocaleString('id-ID')}</span>
+                  <span className="text-slate-400 font-normal"> entri log</span>
+                </>
+              ) : 'Log Aktivitas'}
+            </span>
+            {hasFilters && (
+              <span className="badge bg-amber-50 text-amber-700">Filter aktif</span>
+            )}
+          </div>
           {meta && meta.totalPages > 1 && (
-            <p className="text-xs text-slate-400">Halaman {meta.page} dari {meta.totalPages}</p>
+            <p className="text-xs text-slate-400">
+              Hal. {meta.page} / {meta.totalPages}
+            </p>
           )}
         </div>
 
-        {isLoading ? (
-          <div className="divide-y divide-slate-50">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-5 py-4">
-                <div className="w-9 h-9 bg-slate-100 rounded-full animate-pulse flex-shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 bg-slate-100 rounded animate-pulse w-1/3" />
-                  <div className="h-3 bg-slate-100 rounded animate-pulse w-1/2" />
-                </div>
-                <div className="h-3 bg-slate-100 rounded animate-pulse w-24" />
-              </div>
-            ))}
-          </div>
-        ) : logs.length === 0 ? (
-          <div className="py-20 text-center text-slate-400">
-            <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Tidak ada aktivitas yang ditemukan</p>
-            {(search || modul || action || dateFrom || dateTo) && (
-              <button onClick={handleReset} className="mt-2 text-xs text-primary-600 hover:underline">
-                Hapus filter
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-50">
-            {logs.map((log) => {
-              const cfg = ACTION_CONFIG[log.action] ?? { icon: Info, color: 'text-slate-500', bg: 'bg-slate-100' };
-              const Icon = cfg.icon;
-              const label = actionLabels[log.action] ?? log.action;
-              const initials = log.user_nama.split(' ').slice(0, 2).map((n) => n[0]).join('');
+        <div className="overflow-x-auto">
+          <table className="table-base min-w-[800px]">
+            <thead className="table-head">
+              <tr>
+                <th className="px-4 py-3 text-left w-8">#</th>
+                <th className="px-4 py-3 text-left">Aksi</th>
+                <th className="px-4 py-3 text-left">Modul</th>
+                <th className="px-4 py-3 text-left">User</th>
+                <th className="px-4 py-3 text-left">Role</th>
+                <th className="px-4 py-3 text-left">IP Address</th>
+                <th className="px-4 py-3 text-right">Waktu</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {isLoading && (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i}>
+                    {Array.from({ length: 7 }).map((__, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: j === 0 ? '24px' : j === 6 ? '80px' : '100%' }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
 
-              return (
-                <div key={log.id} className="flex items-start gap-4 px-5 py-3.5 hover:bg-slate-50/70 transition-colors">
-                  {/* Action icon */}
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${cfg.bg}`}>
-                    <Icon className={`w-4 h-4 ${cfg.color}`} />
-                  </div>
+              {!isLoading && logs.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-16 text-center">
+                    <Activity className="w-10 h-10 mx-auto mb-3 text-slate-200" />
+                    <p className="text-sm text-slate-400">Tidak ada aktivitas ditemukan</p>
+                    {hasFilters && (
+                      <button onClick={handleReset} className="mt-2 text-xs text-primary-600 hover:underline">
+                        Hapus filter
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )}
 
-                  {/* Main info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
+              {!isLoading && logs.map((log, idx) => {
+                const label    = actionLabels[log.action] ?? log.action;
+                const initials = log.user_nama.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+                const rowNum   = (page - 1) * (meta?.limit ?? 10) + idx + 1;
+
+                return (
+                  <tr key={log.id} className="hover:bg-primary-50/30 transition-colors">
+                    {/* No */}
+                    <td className="px-4 py-3 text-xs text-slate-400 font-mono">{rowNum}</td>
+
+                    {/* Aksi */}
+                    <td className="px-4 py-3">
                       <ActionBadge action={log.action} label={label} />
-                      <span className="text-xs text-slate-400 px-2 py-0.5 bg-slate-100 rounded-full">
+                    </td>
+
+                    {/* Modul */}
+                    <td className="px-4 py-3">
+                      <span className={`badge text-[11px] ${MODUL_COLORS[log.modul] ?? 'bg-slate-50 text-slate-500'}`}>
                         {MODUL_LABELS[log.modul] ?? log.modul}
                       </span>
-                    </div>
+                    </td>
+
                     {/* User */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="w-5 h-5 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[9px] font-bold text-primary-700">{initials}</span>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[10px] font-bold text-primary-700">{initials}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate leading-tight">{log.user_nama}</p>
+                          <p className="text-[11px] text-slate-400 font-mono leading-tight">{log.user_nik}</p>
+                        </div>
                       </div>
-                      <span className="text-xs font-medium text-slate-700">{log.user_nama}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ROLE_COLORS[log.user_role] ?? 'bg-slate-100 text-slate-500'}`}>
+                    </td>
+
+                    {/* Role */}
+                    <td className="px-4 py-3">
+                      <span className={`badge text-[11px] ${ROLE_COLORS[log.user_role] ?? 'bg-slate-100 text-slate-500'}`}>
                         {ROLE_LABELS[log.user_role as keyof typeof ROLE_LABELS] ?? log.user_role}
                       </span>
-                      <code className="text-[10px] text-slate-400 bg-slate-100 px-1.5 rounded">{log.user_nik}</code>
-                    </div>
-                    {/* IP + entity */}
-                    {(log.ip_address || log.entity_id) && (
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {log.ip_address && <span>IP: {log.ip_address}</span>}
-                        {log.ip_address && log.entity_id && <span className="mx-1">·</span>}
-                        {log.entity_id && <span className="font-mono">{log.entity_id.slice(0, 8)}...</span>}
-                      </p>
-                    )}
-                  </div>
+                    </td>
 
-                  {/* Timestamp */}
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-xs font-medium text-slate-600">{formatDate(log.created_at)}</p>
-                    <p className="text-[11px] text-slate-400">{formatTime(log.created_at)}</p>
-                    <p className="text-[10px] text-slate-300 mt-0.5">{timeAgo(log.created_at)}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                    {/* IP / Entity */}
+                    <td className="px-4 py-3">
+                      {log.ip_address ? (
+                        <code className="text-xs text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                          {log.ip_address}
+                        </code>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
+                      {log.entity_id && (
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{log.entity_id.slice(0, 8)}…</p>
+                      )}
+                    </td>
+
+                    {/* Waktu */}
+                    <td className="px-4 py-3 text-right">
+                      <p className="text-xs font-medium text-slate-700 leading-tight">{formatDate(log.created_at)}</p>
+                      <p className="text-[11px] text-slate-500 leading-tight">{formatTime(log.created_at)}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{timeAgo(log.created_at)}</p>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
         {/* Pagination */}
         {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50">
-            <p className="text-xs text-slate-400">
-              {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} dari {meta.total.toLocaleString()} log
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+            <p className="text-xs text-slate-500">
+              {((meta.page - 1) * meta.limit + 1).toLocaleString('id-ID')}–{Math.min(meta.page * meta.limit, meta.total).toLocaleString('id-ID')}
+              {' '}dari {meta.total.toLocaleString('id-ID')} log
             </p>
             <div className="flex items-center gap-1">
               <button
@@ -372,12 +437,10 @@ export default function ActivityLogPage() {
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              {Array.from({ length: Math.min(meta.totalPages, 7) }, (_, i) => {
-                const p = meta.totalPages <= 7 ? i + 1
-                  : i === 0 ? 1
-                  : i === 6 ? meta.totalPages
-                  : Math.max(2, Math.min(meta.totalPages - 1, page - 2 + i));
-                return (
+              {paginationPages(page, meta.totalPages).map((p, i) =>
+                p === -1 ? (
+                  <span key={`ellipsis-${i}`} className="w-8 h-8 flex items-center justify-center text-slate-400 text-xs">…</span>
+                ) : (
                   <button
                     key={p}
                     onClick={() => setPage(p)}
@@ -385,8 +448,8 @@ export default function ActivityLogPage() {
                   >
                     {p}
                   </button>
-                );
-              })}
+                )
+              )}
               <button
                 onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
                 disabled={page >= meta.totalPages}
@@ -399,11 +462,11 @@ export default function ActivityLogPage() {
         )}
       </div>
 
-      {/* Info */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex gap-3">
+      {/* ── Kebijakan retensi ── */}
+      <div className="card p-4 flex gap-3">
         <Shield className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-medium text-slate-600 mb-0.5">Kebijakan Retensi Log</p>
+          <p className="text-sm font-semibold text-slate-700 mb-0.5">Kebijakan Retensi Log</p>
           <p className="text-xs text-slate-500">
             Log aktivitas bersifat <strong>append-only</strong> dan tidak dapat dihapus untuk menjaga integritas audit trail.
             Setiap aksi penting (login, perubahan data, reset password, dll.) tercatat otomatis beserta timestamp dan IP address.

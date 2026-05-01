@@ -84,11 +84,16 @@ export async function getUsers(req: Request, res: Response) {
 // ── GET /api/users/stats — ringkasan jumlah user ──────────────
 export async function getUserStats(_req: Request, res: Response) {
   try {
-    const result = await query<{ total: string; aktif: string; non_aktif: string }>(
+    const result = await query<{
+      total: string; aktif: string; non_aktif: string;
+      divisi_count: string; departemen_count: string;
+    }>(
       `SELECT
-         COUNT(*)                                  AS total,
-         COUNT(*) FILTER (WHERE is_active = TRUE)  AS aktif,
-         COUNT(*) FILTER (WHERE is_active = FALSE) AS non_aktif
+         COUNT(*)                                                    AS total,
+         COUNT(*) FILTER (WHERE is_active = TRUE)                    AS aktif,
+         COUNT(*) FILTER (WHERE is_active = FALSE)                   AS non_aktif,
+         COUNT(DISTINCT divisi_id) FILTER (WHERE divisi_id IS NOT NULL)       AS divisi_count,
+         COUNT(DISTINCT departemen_id) FILTER (WHERE departemen_id IS NOT NULL) AS departemen_count
        FROM auth.users WHERE deleted_at IS NULL`,
     );
     const row = result.rows[0];
@@ -96,9 +101,11 @@ export async function getUserStats(_req: Request, res: Response) {
     return res.json({
       success: true,
       data: {
-        total:     Number(row.total),
-        aktif:     Number(row.aktif),
-        non_aktif: Number(row.non_aktif),
+        total:           Number(row.total),
+        aktif:           Number(row.aktif),
+        non_aktif:       Number(row.non_aktif),
+        divisi_count:    Number(row.divisi_count),
+        departemen_count: Number(row.departemen_count),
       },
     });
   } catch (err) {

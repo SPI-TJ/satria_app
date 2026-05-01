@@ -62,7 +62,7 @@ export default function CeoLetterPage() {
   const addArea = () => {
     setAreas((prev) => [
       ...prev,
-      { parameter: '', deskripsi: '', prioritas: 'Sedang', urutan: prev.length },
+      { parameter: '', deskripsi: '', prioritas: 'Sedang', target_tipe: 'Direksi', target_unit: 'Utama', urutan: prev.length },
     ]);
     markDirty();
   };
@@ -93,6 +93,8 @@ export default function CeoLetterPage() {
             parameter: a.parameter.trim(),
             deskripsi: a.deskripsi ?? null,
             prioritas: a.prioritas,
+            target_tipe: a.target_tipe ?? 'Direksi',
+            target_unit: a.target_tipe === 'Komisaris' ? 'Komisaris' : (a.target_unit ?? 'Utama'),
             urutan:    i,
           })),
         file: pendingFile ?? null,

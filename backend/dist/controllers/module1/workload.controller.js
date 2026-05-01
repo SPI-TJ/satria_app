@@ -78,7 +78,13 @@ async function getWorkload(req, res) {
                ON kkb.kalender_id = kk.id AND kkb.bulan = m.m
         GROUP BY m.m
       ),
-      -- Per (user, program): hari_per_bulan + bobot_peran
+      -- Bobot peran tahun berjalan dari master (fallback 0 kalau master kosong)
+      bp AS (
+        SELECT peran, bobot::NUMERIC
+        FROM master.bobot_peran
+        WHERE tahun = $1 AND deleted_at IS NULL
+      ),
+      -- Per (user, program): hari_per_bulan + bobot dari master
       assignments AS (
         SELECT
           t.user_id,
@@ -90,20 +96,17 @@ async function getWorkload(req, res) {
             ((EXTRACT(YEAR  FROM a.tanggal_selesai) - EXTRACT(YEAR  FROM a.tanggal_mulai)) * 12
            +  (EXTRACT(MONTH FROM a.tanggal_selesai) - EXTRACT(MONTH FROM a.tanggal_mulai)) + 1)::INT
           ) AS bulan_overlap,
-          CASE t.role_tim
-            WHEN 'Ketua Tim'          THEN 1.0
-            WHEN 'Anggota Tim'        THEN 0.5
-            WHEN 'Pengendali Teknis'  THEN 0.25
-            ELSE 0
-          END::NUMERIC AS bobot
+          COALESCE(bp.bobot, 0)::NUMERIC AS bobot
         FROM pkpt.annual_plan_team t
         JOIN pkpt.annual_audit_plans a ON a.id = t.annual_plan_id
+        LEFT JOIN bp ON bp.peran = t.role_tim::TEXT
         WHERE a.deleted_at IS NULL
           AND EXTRACT(YEAR FROM a.tahun_perencanaan) = $1
           AND t.role_tim IN ('Pengendali Teknis', 'Ketua Tim', 'Anggota Tim')
         UNION ALL
-        -- Kepala SPI otomatis terlibat di semua program kerja tahun tsb (bobot 0.25).
-        -- Pengendali Teknis tidak ikut union ini karena harus mengikuti penunjukan di annual_plan_team.
+        -- Kepala SPI otomatis terlibat di semua program kerja tahun tsb.
+        -- Bobot mengikuti master.bobot_peran (peran = 'Penanggung Jawab').
+        -- Pengendali Teknis tidak ikut auto-attach — harus dari penunjukan tim.
         SELECT
           u.id            AS user_id,
           a.id            AS plan_id,
@@ -114,7 +117,7 @@ async function getWorkload(req, res) {
             ((EXTRACT(YEAR  FROM a.tanggal_selesai) - EXTRACT(YEAR  FROM a.tanggal_mulai)) * 12
            +  (EXTRACT(MONTH FROM a.tanggal_selesai) - EXTRACT(MONTH FROM a.tanggal_mulai)) + 1)::INT
           ) AS bulan_overlap,
-          0.25::NUMERIC AS bobot
+          COALESCE((SELECT bobot FROM bp WHERE peran = 'Penanggung Jawab'), 0)::NUMERIC AS bobot
         FROM pkpt.annual_audit_plans a
         CROSS JOIN auth.users u
         WHERE a.deleted_at IS NULL
@@ -176,18 +179,39 @@ async function getWorkload(req, res) {
         if (user_id)
             params.push(user_id);
         const result = await (0, database_1.query)(sql, params);
-        // Lookup pagu max bobot per bulan dari master (fallback 2.0)
-        const paguRes = await (0, database_1.query)(`SELECT COALESCE(MAX(max_bobot_per_bulan), 2.0)::TEXT AS pagu
+        // Lookup bobot peran + pagu max bobot per bulan dari master
+        const masterRes = await (0, database_1.query)(`SELECT peran, bobot::TEXT, max_bobot_per_bulan::TEXT AS max_bobot
        FROM master.bobot_peran
        WHERE tahun = $1 AND deleted_at IS NULL`, [tahunNum]);
-        const paguBobot = Number(paguRes.rows[0]?.pagu ?? 2.0);
+        const bobotMap = {};
+        let paguBobot = 2.0;
+        masterRes.rows.forEach((r) => {
+            bobotMap[r.peran] = Number(r.bobot);
+            const mp = Number(r.max_bobot);
+            if (Number.isFinite(mp) && mp > paguBobot)
+                paguBobot = mp;
+        });
+        if (masterRes.rows.length === 0)
+            paguBobot = 2.0;
         // Recompute overwork_months di JS karena backend SQL pakai placeholder 0
         result.rows.forEach((r) => {
             const months = Object.values(r.monthly_load ?? {}).map(Number);
             r.overwork_months = months.filter((v) => v > paguBobot).length;
         });
-        // Program list per user (supaya UI bisa drill-down)
-        const programsList = await (0, database_1.query)(`SELECT
+        // Kapasitas man-days tahun = total hari efektif kalender (per orang)
+        // Fallback ke 240 (≈ 20 hari × 12 bulan) kalau kalender belum di-set.
+        const kapRes = await (0, database_1.query)(`SELECT COALESCE(SUM(kkb.hari_efektif), 0)::TEXT AS total
+       FROM pkpt.kalender_kerja kk
+       JOIN pkpt.kalender_kerja_bulan kkb ON kkb.kalender_id = kk.id
+       WHERE kk.tahun = $1 AND kk.deleted_at IS NULL`, [tahunNum]);
+        const kapasitasMandays = Number(kapRes.rows[0]?.total ?? 0) || 240;
+        // Program list per user (supaya UI bisa drill-down).
+        // Setiap baris membawa hari_alokasi (atau estimasi_hari) + mandays = hari × bobot.
+        const programsList = await (0, database_1.query)(`WITH bp AS (
+         SELECT peran, bobot::NUMERIC FROM master.bobot_peran
+         WHERE tahun = $1 AND deleted_at IS NULL
+       )
+       SELECT
           t.user_id,
           a.id,
           a.judul_program,
@@ -196,14 +220,12 @@ async function getWorkload(req, res) {
           t.role_tim::text AS role_tim,
           TO_CHAR(a.tanggal_mulai,   'YYYY-MM-DD') AS tanggal_mulai,
           TO_CHAR(a.tanggal_selesai, 'YYYY-MM-DD') AS tanggal_selesai,
-          CASE t.role_tim
-            WHEN 'Ketua Tim'          THEN 1.0
-            WHEN 'Anggota Tim'        THEN 0.5
-            WHEN 'Pengendali Teknis'  THEN 0.25
-            ELSE 0
-          END AS bobot
+          COALESCE(bp.bobot, 0)::NUMERIC AS bobot,
+          COALESCE(t.hari_alokasi, a.estimasi_hari)::NUMERIC AS hari_alokasi,
+          (COALESCE(t.hari_alokasi, a.estimasi_hari)::NUMERIC * COALESCE(bp.bobot, 0)::NUMERIC)::NUMERIC(10,2) AS mandays
        FROM pkpt.annual_plan_team t
        JOIN pkpt.annual_audit_plans a ON a.id = t.annual_plan_id
+       LEFT JOIN bp ON bp.peran = t.role_tim::TEXT
        WHERE a.deleted_at IS NULL
          AND EXTRACT(YEAR FROM a.tahun_perencanaan) = $1
          AND t.role_tim IN ('Pengendali Teknis', 'Ketua Tim', 'Anggota Tim')
@@ -215,12 +237,12 @@ async function getWorkload(req, res) {
           a.judul_program,
           a.jenis_program,
           a.status_pkpt,
-          CASE u.role
-            WHEN 'kepala_spi' THEN 'Kepala SPI'
-          END AS role_tim,
+          'Kepala SPI'::text AS role_tim,
           TO_CHAR(a.tanggal_mulai,   'YYYY-MM-DD') AS tanggal_mulai,
           TO_CHAR(a.tanggal_selesai, 'YYYY-MM-DD') AS tanggal_selesai,
-          0.25 AS bobot
+          COALESCE((SELECT bobot FROM bp WHERE peran = 'Penanggung Jawab'), 0)::NUMERIC AS bobot,
+          a.estimasi_hari::NUMERIC AS hari_alokasi,
+          (a.estimasi_hari::NUMERIC * COALESCE((SELECT bobot FROM bp WHERE peran = 'Penanggung Jawab'), 0)::NUMERIC)::NUMERIC(10,2) AS mandays
        FROM pkpt.annual_audit_plans a
        CROSS JOIN auth.users u
        WHERE a.deleted_at IS NULL
@@ -230,11 +252,20 @@ async function getWorkload(req, res) {
          AND u.deleted_at IS NULL
          ${user_id ? 'AND u.id = $2' : ''}
        ORDER BY tanggal_mulai`, user_id ? [tahunNum, user_id] : [tahunNum]);
-        // Attach programs to each row
-        const rows = result.rows.map((r) => ({
-            ...r,
-            programs: programsList.rows.filter((p) => p.user_id === r.user_id),
-        }));
+        // Attach programs + agregat man-days per auditor
+        const rows = result.rows.map((r) => {
+            const programs = programsList.rows.filter((p) => p.user_id === r.user_id);
+            const totalMandays = programs.reduce((s, p) => s + Number(p.mandays ?? 0), 0);
+            return {
+                ...r,
+                programs,
+                total_mandays: Number(totalMandays.toFixed(2)),
+                kapasitas_mandays: kapasitasMandays,
+                utilisasi_mandays: kapasitasMandays > 0
+                    ? Number(((totalMandays / kapasitasMandays) * 100).toFixed(1))
+                    : 0,
+            };
+        });
         // Summary
         const totalAuditor = rows.length;
         const avgLoad = totalAuditor > 0
@@ -253,6 +284,8 @@ async function getWorkload(req, res) {
                 idle: idleCount,
                 tahun: tahunNum,
                 pagu_bobot_per_bulan: paguBobot,
+                bobot_peran: bobotMap, // { 'Penanggung Jawab': 0.25, 'Pengendali Teknis': 0.25, 'Ketua Tim': 1.0, 'Anggota Tim': 0.5 }
+                kapasitas_mandays: kapasitasMandays, // total hari efektif kalender tahunan
             },
         });
     }
@@ -276,15 +309,21 @@ async function simulateWorkload(req, res) {
         if (!tanggal_mulai || !tanggal_selesai) {
             return res.status(400).json({ success: false, message: 'tanggal_mulai & tanggal_selesai wajib diisi.' });
         }
-        const bobotPeran = role_tim === 'Ketua Tim' ? 1.0 :
-            role_tim === 'Anggota Tim' ? 0.5 :
-                role_tim === 'Pengendali Teknis' ? 0.25 :
-                    0;
         const hariAlokasiNumber = Number(hari_alokasi);
         const hariAlokasi = Number.isFinite(hariAlokasiNumber) && hariAlokasiNumber >= 0 ? hariAlokasiNumber : null;
         const tahun = new Date(tanggal_mulai).getFullYear();
+        // Bobot peran tahun simulasi dari master
+        const bobotMasterRes = await (0, database_1.query)(`SELECT peran, bobot::TEXT FROM master.bobot_peran
+       WHERE tahun = $1 AND deleted_at IS NULL`, [tahun]);
+        const bobotMap = {};
+        bobotMasterRes.rows.forEach((r) => { bobotMap[r.peran] = Number(r.bobot); });
+        const bobotPeran = bobotMap[role_tim] ?? 0;
         // Hitung load existing per user per bulan (satuan bobot, bukan ratio)
         const existing = await (0, database_1.query)(`WITH months AS (SELECT generate_series(1,12) AS m),
+       bp AS (
+         SELECT peran, bobot::NUMERIC FROM master.bobot_peran
+         WHERE tahun = $1 AND deleted_at IS NULL
+       ),
        kapasitas AS (
          SELECT m.m AS bulan,
                 COALESCE(MAX(kkb.hari_efektif), 20)::NUMERIC AS hari_efektif
@@ -302,14 +341,10 @@ async function simulateWorkload(req, res) {
                   ((EXTRACT(YEAR  FROM a.tanggal_selesai) - EXTRACT(YEAR  FROM a.tanggal_mulai)) * 12
                 +  (EXTRACT(MONTH FROM a.tanggal_selesai) - EXTRACT(MONTH FROM a.tanggal_mulai)) + 1)::INT
                 ) AS bulan_overlap,
-                CASE t.role_tim
-                  WHEN 'Ketua Tim' THEN 1.0
-                  WHEN 'Anggota Tim' THEN 0.5
-                  WHEN 'Pengendali Teknis' THEN 0.25
-                  ELSE 0
-                END::NUMERIC AS bobot
+                COALESCE(bp.bobot, 0)::NUMERIC AS bobot
          FROM pkpt.annual_plan_team t
          JOIN pkpt.annual_audit_plans a ON a.id = t.annual_plan_id
+         LEFT JOIN bp ON bp.peran = t.role_tim::TEXT
          WHERE a.deleted_at IS NULL
            AND EXTRACT(YEAR FROM a.tahun_perencanaan) = $1
            AND t.user_id = ANY($2::uuid[])
@@ -321,7 +356,7 @@ async function simulateWorkload(req, res) {
                   ((EXTRACT(YEAR  FROM a.tanggal_selesai) - EXTRACT(YEAR  FROM a.tanggal_mulai)) * 12
                 +  (EXTRACT(MONTH FROM a.tanggal_selesai) - EXTRACT(MONTH FROM a.tanggal_mulai)) + 1)::INT
                 ) AS bulan_overlap,
-                0.25::NUMERIC AS bobot
+                COALESCE((SELECT bobot FROM bp WHERE peran = 'Penanggung Jawab'), 0)::NUMERIC AS bobot
          FROM pkpt.annual_audit_plans a
          CROSS JOIN auth.users u
          WHERE a.deleted_at IS NULL
